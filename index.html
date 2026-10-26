@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nông Trại Vui Vẻ 3D • Đảo Riêng Ven Hà Nội</title>
+    <link rel="stylesheet" href="./styles.css?v=20261026_03" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="toast-container"></div>
+
+    <!-- Fullscreen 3D Canvas -->
+    <div id="island-3d-viewport" class="fullscreen-3d"></div>
+
+    <!-- Minimal Floating Top HUD -->
+    <header class="hud-top">
+      <!-- Top-Left: Level & Island Size -->
+      <div class="hud-group">
+        <button type="button" id="btn-hud-info" class="hud-pill" title="Xem thông tin Khu đất mẫu 2.000m²">
+          <span class="pill-badge" id="level-badge">Lv.1</span>
+          <div class="mini-exp-track">
+            <div id="exp-bar-fill" class="mini-exp-fill" style="width: 60%"></div>
+          </div>
+          <span class="hud-divider">|</span>
+          <span>🏝️ <strong id="rented-area">40m²</strong><small>/500m²</small></span>
+        </button>
+      </div>
+
+      <!-- Top-Right: Wallet & Day -->
+      <div class="hud-group">
+        <div class="hud-pill" id="wallet-pill" title="Bấm để nạp thêm tiền vào Quỹ">
+          <span>💰 Quỹ: <strong id="wallet-balance">7.200.000đ</strong></span>
+          <span id="wallet-delta-badge" class="wallet-delta-badge hidden"></span>
+          <button type="button" id="btn-open-topup" class="hud-icon-btn" title="Nạp tiền Top-up">＋</button>
+        </div>
+
+        <div class="hud-pill">
+          <span id="hanoi-time-display">🕒 --:-- Hà Nội</span>
+          <button type="button" id="btn-cycle-time" class="hud-action-chip" title="Đổi chế độ ánh sáng (Giờ thật Hà Nội / Ban ngày / Hoàng hôn / Tối)">
+            🌤️ Giờ HN
+          </button>
+          <span class="hud-divider">|</span>
+          <span>☀️ <strong id="farm-day">Ngày 1</strong></span>
+          <button type="button" id="btn-next-day" class="hud-action-chip" title="Qua 1 ngày thực tế">
+            ⏩ +1 Ngày
+          </button>
+          <button type="button" id="btn-next-week" class="hud-action-chip" title="Tua nhanh 7 ngày (1 tuần) để thử nghiệm chu kỳ thu hoạch thực tế">
+            ⏩ +7 Ngày
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Floating Context Bar for Selected 10m2 Plot (Only minimal icons & badges) -->
+    <div id="plot-context-bar" class="plot-context-bar">
+      <div class="context-lot-tag">
+        <span id="ctx-plot-icon">🥬</span>
+        <strong id="ctx-plot-code">HN-DA-001</strong>
+        <span id="ctx-plot-status" class="ctx-badge">25%</span>
+      </div>
+
+      <div class="context-actions">
+        <button type="button" id="btn-ctx-plant" class="ctx-btn" title="Trồng cây / Đặt vật phẩm vào ô này">
+          🌱 Đặt/Trồng
+        </button>
+        <button type="button" id="btn-water-plot" class="ctx-btn" title="Tưới nước (+15 EXP, 1 lần/ngày)">
+          💧 Tưới
+        </button>
+        <button type="button" id="btn-request-live" class="ctx-btn ctx-btn-cam" title="Yêu cầu ảnh & thông số thật tại Đông Anh">
+          📸 Ảnh thật
+        </button>
+        <button type="button" id="btn-open-harvest" class="ctx-btn ctx-btn-harvest" title="Thu hoạch về chung cư hoặc đặt lịch cuối tuần">
+          🧺 Thu hoạch
+        </button>
+        <button type="button" id="btn-ctx-detail" class="ctx-btn-icon" title="Xem chi tiết ô đất này">
+          ℹ️
+        </button>
+      </div>
+
+      <!-- On-demand Tooltip Details (Hidden by default, only shown when user clicks ℹ️) -->
+      <div id="plot-detail-popover" class="plot-detail-popover hidden"></div>
+    </div>
+
+    <!-- Minimal Bottom Dock (Icon-driven) -->
+    <nav class="hud-bottom-dock">
+      <button type="button" class="dock-btn" data-open-modal="shop-modal">
+        <span class="dock-icon">🌱</span>
+        <span class="dock-label">Cửa Hàng</span>
+      </button>
+      <button type="button" class="dock-btn" data-open-modal="rent-modal">
+        <span class="dock-icon">🧱</span>
+        <span class="dock-label">Thuê Đất</span>
+      </button>
+      <button type="button" id="btn-dock-live" class="dock-btn dock-btn-highlight">
+        <span class="dock-icon">📸</span>
+        <span class="dock-label">Xem Vườn Thật</span>
+      </button>
+      <button type="button" class="dock-btn" data-open-modal="updates-modal">
+        <span class="dock-icon">📬</span>
+        <span class="dock-label">Nhật Ký</span>
+        <span id="unread-updates-count" class="dock-badge">4</span>
+      </button>
+      <button type="button" class="dock-btn" data-open-modal="assets-guide-modal">
+        <span class="dock-icon">🎨</span>
+        <span class="dock-label">Mẫu 3D Cute</span>
+      </button>
+    </nav>
+
+    <!-- MODAL 1: Shop Drawer (Game-style 3D Turntable Showcase + Minimal Icon Slots) -->
+    <div id="shop-modal" class="modal-backdrop hidden">
+      <div class="modal-box modal-shop-3d">
+        <div class="modal-header">
+          <h3>🌱 Cửa Hàng 3D</h3>
+          <div class="modal-header-actions">
+            <button type="button" class="modal-wallet-chip" data-open-modal="topup-modal" title="Bấm để nạp thêm tiền">
+              💰 Quỹ: <strong data-live-wallet>7.200.000đ</strong> <span class="chip-plus">＋</span>
+            </button>
+            <button type="button" class="btn-close" data-close-modal>✕</button>
+          </div>
+        </div>
+        <div class="modal-body shop-body-layout">
+          <div id="shop-category-tabs" class="shop-category-tabs"></div>
+
+          <div class="shop-game-split">
+            <!-- Bàn xoay 3D trực quan cho vật phẩm đang chọn (Kiểu Slide 5 cấp độ) -->
+            <div class="shop-3d-showcase-card">
+              <div class="shop-3d-stage-slider-wrap">
+                <button
+                  type="button"
+                  id="btn-stage-prev"
+                  class="stage-side-nav-btn stage-side-prev"
+                  title="Về cấp trước (Trái)"
+                  aria-label="Về cấp trước"
+                >
+                  ◀
+                </button>
+                <div id="shop-3d-viewport" class="shop-3d-viewport" title="Kéo chuột để xoay xem mẫu 3D"></div>
+                <button
+                  type="button"
+                  id="btn-stage-next"
+                  class="stage-side-nav-btn stage-side-next"
+                  title="Sang cấp tiếp theo (Phải)"
+                  aria-label="Sang cấp tiếp theo"
+                >
+                  ▶
+                </button>
+              </div>
+              <div id="shop-selected-preview" class="shop-selected-preview-minimal"></div>
+              <button type="button" id="btn-place-item" class="btn-primary-full btn-game-place">
+                🌱 Đặt Vào Ô Đang Chọn
+              </button>
+            </div>
+
+            <!-- Lưới chọn nhanh bằng Icon tối giản -->
+            <div id="shop-catalog-grid" class="shop-catalog-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Rent Land & Farmer Mastery / Garden Management -->
+    <div id="rent-modal" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>🧱 Khu Đất & Kinh Nghiệm Điền Chủ</h3>
+          <div class="modal-header-actions">
+            <button type="button" class="modal-wallet-chip" data-open-modal="topup-modal" title="Bấm để nạp thêm tiền">
+              💰 Quỹ: <strong data-live-wallet>7.200.000đ</strong> <span class="chip-plus">＋</span>
+            </button>
+            <button type="button" class="btn-close" data-close-modal>✕</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="compact-stat-row">
+            <span>Đơn giá thuê: <strong>200.000đ / 10m²</strong></span>
+            <span>Tối đa: <strong>500m² / hộ</strong></span>
+          </div>
+
+          <div class="rent-slider-box">
+            <div id="rent-area-preview" class="rent-big-preview">+20m² = 400.000đ</div>
+            <input type="range" id="rent-area-slider" min="10" max="460" step="10" value="20" />
+            <div class="quick-rent-chips">
+              <button type="button" class="chip-btn" data-rent-preset="10">+10m²</button>
+              <button type="button" class="chip-btn" data-rent-preset="50">+50m²</button>
+              <button type="button" class="chip-btn" data-rent-preset="100">+100m²</button>
+              <button type="button" class="chip-btn" data-rent-preset="260">+260m² (Đủ 300m² mở Ao)</button>
+            </div>
+          </div>
+
+          <div class="pool-mini-box">
+            <div class="pool-mini-label" id="pool-summary-text">Quỹ đất mẫu 2.000m² Riverside Long Biên</div>
+            <div class="pool-progress-track">
+              <div id="pool-bar-user" class="pool-bar-user"></div>
+              <div id="pool-bar-others" class="pool-bar-others"></div>
+            </div>
+          </div>
+
+          <button type="button" id="btn-rent-land" class="btn-primary-full">
+            ➕ Xác Nhận Thuê Thêm Đất
+          </button>
+
+          <!-- Hồ Sơ Kinh Nghiệm Nuôi Trồng & Quản Lý Hộ Khu Vườn Khác -->
+          <div class="mastery-box">
+            <div class="mastery-header">
+              <strong id="mastery-level-title">🏆 Kinh Nghiệm Nuôi Trồng Thực Tế</strong>
+              <span id="mastery-exp-badge" class="ctx-badge">0 EXP</span>
+            </div>
+            <div id="mastery-stats-grid" class="mastery-stats-grid"></div>
+
+            <div class="manage-others-box">
+              <div class="manage-others-title">
+                🤝 <strong>Nhận quản lý hộ vườn cho gia đình khác</strong>
+                <small>(Mở từ Cấp 3 • Thu +15.000đ / 10m² / ngày)</small>
+              </div>
+              <div class="quick-rent-chips" id="manage-garden-chips">
+                <button type="button" class="chip-btn" data-manage-area="0">0m²</button>
+                <button type="button" class="chip-btn" data-manage-area="20">20m² (+30k/ngày)</button>
+                <button type="button" class="chip-btn" data-manage-area="50">50m² (+75k/ngày)</button>
+                <button type="button" class="chip-btn" data-manage-area="100">100m² (+150k/ngày)</button>
+                <button type="button" class="chip-btn" data-manage-area="200">200m² (+300k/ngày)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: Top-up Wallet -->
+    <div id="topup-modal" class="modal-backdrop hidden">
+      <div class="modal-box modal-sm">
+        <div class="modal-header">
+          <h3>💰 Nạp Quỹ Nông Trại</h3>
+          <button type="button" class="btn-close" data-close-modal>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="topup-current-balance-box">
+            <span>Số dư Quỹ hiện tại:</span>
+            <strong data-live-wallet>7.200.000đ</strong>
+          </div>
+          <div class="topup-grid">
+            <button type="button" class="topup-card-btn" data-topup="200000">
+              <strong>+200.000đ</strong>
+              <small>Đủ thuê thêm 10m²</small>
+            </button>
+            <button type="button" class="topup-card-btn" data-topup="500000">
+              <strong>+500.000đ</strong>
+              <small>Gói Gia Đình Nhỏ</small>
+            </button>
+            <button type="button" class="topup-card-btn" data-topup="1000000">
+              <strong>+1.000.000đ</strong>
+              <small>Thuê 50m² đất</small>
+            </button>
+            <button type="button" class="topup-card-btn" data-topup="2000000">
+              <strong>+2.000.000đ</strong>
+              <small>Gói Điền Chủ VIP</small>
+            </button>
+          </div>
+          <div class="topup-custom-row">
+            <input
+              type="number"
+              id="custom-topup-input"
+              class="text-input"
+              placeholder="Nhập số tiền VNĐ khác (VD: 300000)..."
+              min="10000"
+              step="10000"
+            />
+            <button type="button" id="btn-custom-topup" class="btn-primary-full">
+              ➕ Nạp Số Tiền Này Vào Quỹ
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: Live Real-World Farm Photo & Telemetry -->
+    <div id="live-view-modal" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 id="live-modal-title">📸 Camera & Thông Số Thực Tế</h3>
+          <button type="button" class="btn-close" data-close-modal>✕</button>
+        </div>
+        <div class="modal-body">
+          <canvas id="live-photo-canvas" width="600" height="310" class="live-photo-canvas"></canvas>
+          <div id="live-modal-meta" class="live-modal-meta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 5: Harvest Choice (Apartment Delivery vs Weekend Visit) -->
+    <div id="harvest-modal" class="modal-backdrop hidden">
+      <div class="modal-box modal-sm">
+        <div class="modal-header">
+          <h3>🧺 Nhận Nông Sản Thực Tế</h3>
+          <button type="button" class="btn-close" data-close-modal>✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="harvest-modal-item" class="harvest-highlight"></p>
+          <input
+            type="text"
+            id="apartment-address-input"
+            class="text-input"
+            placeholder="Nhập địa chỉ chung cư nhận rau/trứng..."
+            value="Căn 1808, Tòa S2.05, Vinhomes Smart City, Hà Nội"
+          />
+          <div class="harvest-choice-grid">
+            <button type="button" id="btn-harvest-ship" class="btn-choice-ship">
+              <strong>🚚 Ship Về Chung Cư</strong>
+              <span>Giao tươi trước 10h sáng</span>
+            </button>
+            <button type="button" id="btn-harvest-visit" class="btn-choice-visit">
+              <strong>👨‍👩‍👧‍👦 Cả Nhà Về Vườn Hái</strong>
+              <span>Đặt lịch Thứ 7 / Chủ Nhật</span>
+            </button>
+            <button type="button" id="btn-harvest-sell" class="btn-choice-sell">
+              <strong id="btn-harvest-sell-title">💰 Bán Thành Phẩm Dư</strong>
+              <span id="btn-harvest-sell-sub">Bán cho Chợ Cư Dân • Tiền cộng vào Ví</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 6: Daily Farm Updates & Orders (On-Demand Drawer) -->
+    <div id="updates-modal" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>📬 Nhật Ký Trang Trại & Đơn Thu Hoạch</h3>
+          <button type="button" class="btn-close" data-close-modal>✕</button>
+        </div>
+        <div class="modal-body">
+          <div id="daily-updates-feed" class="daily-updates-feed"></div>
+          <h4 class="orders-heading">🚚 Lịch Sử Đơn Thu Hoạch</h4>
+          <div id="harvest-orders-list" class="harvest-orders-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 7: Visual Gallery of Cute 3D Asset Sources -->
+    <div id="assets-guide-modal" class="modal-backdrop hidden">
+      <div class="modal-box modal-wide">
+        <div class="modal-header">
+          <h3>🎨 Nguồn Hình 3D Cute Clay (Đất Sét Mềm) & Cozy 3D Có Sẵn</h3>
+          <button type="button" class="btn-close" data-close-modal>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="asset-gallery-grid">
+            <a class="asset-visual-card" href="https://wannathis.one/products/animals-3d-illustrations" target="_blank" rel="noopener">
+              <img src="./assets/previews/wannathis_animals_0.png" alt="Wannathis Cute Clay Animals 3D" />
+              <div class="asset-card-info">
+                <span class="asset-tag-free">Đúng bộ ảnh mẫu của anh ($24)</span>
+                <h4>Wannathis – Cute Clay Animals 3D</h4>
+                <p>Bộ 45 thú cưng & động vật phong cách đất sét mịn (PNG/Figma, có thể đưa qua Tripo3D/Meshy ra file .GLB)</p>
+              </div>
+            </a>
+
+            <a class="asset-visual-card" href="https://iconscout.com/3d-icons/animal-farming" target="_blank" rel="noopener">
+              <img src="./assets/previews/wannathis_animals_1.png" alt="IconScout 3D Clay Animal Farming" />
+              <div class="asset-card-info">
+                <span class="asset-tag-free">File 3D .GLTF / .BLEND / .OBJ</span>
+                <h4>IconScout – 3D Clay Animal Farming & Crops</h4>
+                <p>Kho hàng ngàn model 3D đất sét mềm chủ đề nông trại (gà, bò, cừu, thỏ, rau củ) tải trực tiếp file .GLB</p>
+              </div>
+            </a>
+
+            <a class="asset-visual-card" href="https://sketchfab.com/omabuarts" target="_blank" rel="noopener">
+              <img src="./assets/previews/quaternius_animals.gif" alt="Omabuarts Smooth Cute Animals" />
+              <div class="asset-card-info">
+                <span class="asset-tag-free">Full Animation • .FBX / .GLTF</span>
+                <h4>Omabuarts – Quirky & Cute Farm Animals</h4>
+                <p>Bộ thú nông trại bo tròn mượt, mắt hạt nhãn đen nhánh kèm 12+ chuyển động cực kỳ ngộ nghĩnh</p>
+              </div>
+            </a>
+
+            <a class="asset-visual-card" href="https://quaternius.itch.io/lowpoly-farm-buildings" target="_blank" rel="noopener">
+              <img src="./assets/previews/quaternius_farm_buildings.png" alt="Quaternius LowPoly Farm Buildings" />
+              <div class="asset-card-info">
+                <span class="asset-tag-free">Miễn phí 100% (CC0)</span>
+                <h4>Quaternius – Cozy Farm Buildings</h4>
+                <p>Chuồng trại, cối xay gió, hàng rào, nhà kho nông trại chuẩn file .FBX / .GLTF</p>
+              </div>
+            </a>
+
+            <a class="asset-visual-card" href="https://kaylousberg.itch.io/kaykit-forest" target="_blank" rel="noopener">
+              <img src="./assets/previews/kaykit_forest.png" alt="KayKit Forest Nature" />
+              <div class="asset-card-info">
+                <span class="asset-tag-free">Miễn phí (CC0)</span>
+                <h4>KayKit – Forest Nature Pack</h4>
+                <p>Cây cối, bụi hoa, đá, đảo nổi bo tròn cực kỳ cute, xuất sẵn .GLTF/.GLB</p>
+              </div>
+            </a>
+
+            <a class="asset-visual-card" href="https://kenney.nl/assets/food-kit" target="_blank" rel="noopener">
+              <img src="./assets/previews/kenney_food.png" alt="Kenney 3D Food & Crops Kit" />
+              <div class="asset-card-info">
+                <span class="asset-tag-free">Miễn phí 100% (CC0)</span>
+                <h4>Kenney.nl – 3D Food & Crops Kit</h4>
+                <p>Hơn 200 mẫu nông sản, rau củ, trái cây, trứng sữa 3D siêu nhẹ (.GLB)</p>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/app.mjs?v=20261026_03"></script>
+  </body>
+</html>

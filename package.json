@@ -1,0 +1,10 @@
+{
+  "name": "nong-trai-vui-ve-3d-o2o-demo",
+  "version": "1.0.0",
+  "description": "Demo Game Thực Tế Khu Vườn Nông Trại Vui Vẻ 3D (Quỹ đất mẫu 2.000m² ven Hà Nội)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/farmEngine.test.mjs",
+    "start": "python3 -m http.server 4173"
+  }
+}
