@@ -1230,40 +1230,93 @@ html {
 }
 
 /* =========================================================
-   2,000m² MASTER MAP & DIRECTIONAL EXPANSION STYLES
+   2,000m² (25m × 80m) VILLAGE MASTER MAP & EXPANSION STYLES
    ========================================================= */
-.modal-map-wide {
-  max-width: 820px;
-  width: 95vw;
+.hud-map-cta-pill {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 99px;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.28);
+  white-space: nowrap;
 }
 
-.master-map-container {
+.modal-map-wide {
+  max-width: 960px;
+  width: 96vw;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.master-map-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  background: #f1f5f9;
+  padding: 5px;
+  border-radius: 14px;
+}
+
+.map-mode-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-mode-tab.active {
+  background: #ffffff;
+  color: #14532d;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+}
+
+.master-map-split-layout {
+  display: grid;
+  grid-template-columns: minmax(290px, 410px) 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.master-map-split-layout.hidden,
+.master-blueprint-sheet.hidden {
+  display: none;
+}
+
+.village-strip-card {
   background: #f0fdf4;
   border: 2px solid #bbf7d0;
   border-radius: 18px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.master-map-header {
+.village-strip-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 10px;
 }
 
-.master-map-title-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.master-map-title-group strong {
-  font-size: 0.9rem;
+.village-strip-header strong {
+  font-size: 0.88rem;
   color: #14532d;
+}
+
+.village-strip-sub {
+  font-size: 0.72rem;
+  color: #475569;
+  margin-top: 2px;
 }
 
 .map-coord-badge {
@@ -1271,9 +1324,10 @@ html {
   color: #15803d;
   border: 1.5px solid #86efac;
   border-radius: 99px;
-  padding: 2px 10px;
-  font-size: 0.75rem;
+  padding: 3px 10px;
+  font-size: 0.74rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .master-map-legend {
@@ -1281,7 +1335,7 @@ html {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  font-size: 0.74rem;
+  font-size: 0.73rem;
   font-weight: 700;
   color: #334155;
 }
@@ -1289,24 +1343,24 @@ html {
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
   display: inline-block;
 }
 
 .dot-user {
-  background: #16a34a;
+  background: #22c55e;
   border: 1.5px solid #14532d;
 }
 
 .dot-preview {
   background: #38bdf8;
-  border: 1.5px dashed #0284c7;
+  border: 1.5px dashed #0369a1;
 }
 
 .dot-neighbor {
@@ -1315,109 +1369,202 @@ html {
 }
 
 .dot-free {
-  background: #dcfce7;
+  background: rgba(255, 255, 255, 0.85);
   border: 1.5px solid #86efac;
 }
 
-.master-map-compass-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.compass-edge {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: #15803d;
-  background: rgba(255, 255, 255, 0.85);
-  padding: 2px 10px;
-  border-radius: 99px;
-  border: 1px solid #bbf7d0;
-}
-
-.compass-middle-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* Visual 25m x 80m strip with 10x20 grid overlay aligned over the fenced garden */
+.village-strip-visual-wrap {
+  position: relative;
   width: 100%;
-}
-
-.compass-west,
-.compass-east {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  padding: 8px 3px;
-  font-size: 0.68rem;
-}
-
-.master-map-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(20, minmax(0, 1fr));
-  gap: 3px;
-  background: #dcfce7;
-  padding: 6px;
-  border-radius: 12px;
+  max-width: 380px;
+  margin: 0 auto;
+  border-radius: 14px;
+  overflow: hidden;
   border: 2px solid #86efac;
-  box-shadow: inset 0 2px 6px rgba(21, 128, 61, 0.1);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14);
+  background: #d8e2dc;
+}
+
+.village-strip-bg-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.master-map-grid-overlay {
+  position: absolute;
+  top: 3.1%;
+  left: 34.5%;
+  width: 64.2%;
+  height: 93.8%;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-rows: repeat(20, minmax(0, 1fr));
+  gap: 1px;
+  z-index: 3;
 }
 
 .map-cell {
-  aspect-ratio: 1 / 1;
-  border-radius: 4px;
+  border-radius: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   line-height: 1;
   transition: transform 0.12s ease, background 0.12s ease;
   cursor: pointer;
 }
 
 .map-cell:hover {
-  transform: scale(1.18);
-  z-index: 2;
+  transform: scale(1.22);
+  z-index: 6;
 }
 
 .map-cell-free {
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid #bbf7d0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.map-cell-free:hover {
+  background: rgba(187, 247, 208, 0.45);
+  border-color: #4ade80;
 }
 
 .map-cell-user {
-  background: linear-gradient(135deg, #22c55e, #15803d);
-  border: 1.5px solid #14532d;
+  background: rgba(34, 197, 94, 0.78);
+  border: 1.5px solid #ffffff;
   color: #ffffff;
-  box-shadow: 0 1px 4px rgba(21, 128, 61, 0.35);
+  box-shadow: 0 0 8px rgba(22, 163, 74, 0.85);
 }
 
 .map-cell-neighbor {
-  background: linear-gradient(135deg, #fb923c, #ea580c);
-  border: 1.5px solid #9a3412;
+  background: rgba(249, 115, 22, 0.68);
+  border: 1px solid rgba(255, 237, 213, 0.9);
   color: #ffffff;
 }
 
 .map-cell-preview {
-  background: linear-gradient(135deg, #38bdf8, #0284c7);
-  border: 1.5px dashed #0369a1;
+  background: rgba(14, 165, 233, 0.82);
+  border: 1.5px dashed #ffffff;
   color: #ffffff;
-  animation: pulsePreviewCell 1.1s infinite alternate ease-in-out;
+  animation: pulsePreviewCell 0.95s infinite alternate ease-in-out;
+}
+
+.user-map-pin-callout {
+  position: absolute;
+  top: 32%;
+  left: 60%;
+  transform: translate(-50%, -100%);
+  z-index: 8;
+  background: #15803d;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  border-radius: 99px;
+  padding: 3px 9px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: pinFloat 1.5s infinite ease-in-out alternate;
+}
+
+@keyframes pinFloat {
+  0% {
+    transform: translate(-50%, -100%) translateY(0);
+  }
+  100% {
+    transform: translate(-50%, -100%) translateY(-4px);
+  }
 }
 
 @keyframes pulsePreviewCell {
   0% {
     transform: scale(0.94);
-    opacity: 0.85;
+    opacity: 0.82;
   }
   100% {
-    transform: scale(1.04);
+    transform: scale(1.05);
     opacity: 1;
   }
 }
 
+.village-expansion-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.village-cluster-info-box {
+  background: #f0fdf4;
+  border: 2px solid #bbf7d0;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.cluster-info-title {
+  font-size: 0.86rem;
+  color: #14532d;
+  margin-bottom: 4px;
+}
+
+.village-cluster-info-box p {
+  font-size: 0.76rem;
+  color: #334155;
+  line-height: 1.4;
+}
+
+/* Blueprint Tab (Full 25m x 80m Design Sheet) */
+.master-blueprint-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.blueprint-image-frame {
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 2px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.blueprint-full-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.blueprint-specs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.blueprint-spec-item {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.blueprint-spec-item strong {
+  font-size: 0.78rem;
+  color: #0f172a;
+}
+
+.blueprint-spec-item span {
+  font-size: 0.74rem;
+  color: #475569;
+}
+
 .expansion-direction-section {
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .direction-section-label {
@@ -1680,24 +1827,32 @@ html {
     font-size: 0.76rem;
   }
 
-  /* 2,000m² Master Map on Mobile */
-  .master-map-container {
-    padding: 9px;
+  /* 2,000m² (25m x 80m) Master Map on Mobile */
+  .master-map-mode-tabs {
+    flex-direction: column;
+    gap: 4px;
   }
 
-  .master-map-grid {
-    gap: 2px;
-    padding: 4px;
+  .map-mode-tab {
+    font-size: 0.75rem;
+    padding: 7px 8px;
+  }
+
+  .master-map-split-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .village-strip-visual-wrap {
+    max-width: 310px;
   }
 
   .map-cell {
-    font-size: 0.48rem;
-    border-radius: 2px;
+    font-size: 0.45rem;
   }
 
-  .compass-west,
-  .compass-east {
-    display: none;
+  .blueprint-specs-grid {
+    grid-template-columns: 1fr;
   }
 
   .expansion-direction-grid {

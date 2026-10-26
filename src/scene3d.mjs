@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_03';
+import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_04';
 
 /**
  * Helper tạo vật liệu Đất Sét Mềm (Soft Matte Claymorphism Shader)

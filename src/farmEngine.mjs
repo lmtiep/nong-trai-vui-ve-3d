@@ -2,8 +2,10 @@ export const LAND_UNIT_M2 = 10;
 export const PRICE_PER_10M2 = 200_000;
 export const MAX_USER_AREA_M2 = 500;
 export const TOTAL_DEMO_FARM_M2 = 2_000;
-export const MASTER_MAP_COLS = 20;
-export const MASTER_MAP_ROWS = 10; // 20 cột x 10 hàng = 200 lô x 10m² = 2.000m²
+export const MASTER_MAP_WIDTH_M = 25;
+export const MASTER_MAP_LENGTH_M = 80;
+export const MASTER_MAP_COLS = 10; // Chiều ngang 25m (10 cột x 2.5m)
+export const MASTER_MAP_ROWS = 20; // Chiều dài 80m (20 hàng x 4m) = 200 lô x 10m² = 2.000m²
 export const MIN_POND_LAND_AREA_M2 = 300;
 export const MANAGEMENT_FEE_PER_10M2 = 15_000;
 export const MAX_MANAGED_BY_LEVEL = {
@@ -570,18 +572,54 @@ export function addExp(state, amount) {
   return leveledUp;
 }
 
+export function getClusterInfoByRow(row) {
+  if (row <= 5) {
+    return {
+      id: 'cum_4',
+      name: 'Cụm 4 (25m)',
+      shortName: 'Cụm 4',
+      desc: 'Ô lớn kết hợp Khu sinh hoạt chung & Chòi nghỉ cuối khu',
+    };
+  }
+  if (row <= 10) {
+    return {
+      id: 'cum_3',
+      name: 'Cụm 3 (20m)',
+      shortName: 'Cụm 3',
+      desc: 'Đa dạng, có ô lớn 40–60m² & Nút mở rộng giàn hoa',
+    };
+  }
+  if (row <= 15) {
+    return {
+      id: 'cum_2',
+      name: 'Cụm 2 (20m)',
+      shortName: 'Cụm 2',
+      desc: 'Ô vừa 20–30m² dọc trục chính uốn nhẹ',
+    };
+  }
+  return {
+    id: 'cum_1',
+    name: 'Cụm 1 (15m)',
+    shortName: 'Cụm 1',
+    desc: 'Ô nhỏ 10–20m² ngay Cổng chào & Đường trục chính 1m',
+  };
+}
+
 export function createDefaultMasterMap() {
-  // Quy hoạch khu đất 2.000m² (20 cột x 10 hàng, mỗi ô trên bản đồ tổng = 10m²):
-  // Đã có 5 hộ gia đình khác thuê 42 ô (= 420m²), trong đó:
-  // - GĐ Tuấn Kiệt (Times City) đã xây sát cạnh phía Bắc (row 1..2, col 5..7) của vị trí khởi điểm người chơi (row 3..4, col 5..6) -> chặn hướng Bắc!
-  // - GĐ Minh Anh (Royal City) ở phía Tây (row 2..5, col 1..2) -> hướng Tây chỉ còn mở rộng được tối đa +40m² (col 3..4) là chạm đất GĐ Minh Anh!
-  // - Hướng Đông (về phía sông Hồng) và Hướng Nam (về phía đường lớn) còn rộng rãi để mở rộng.
+  // Quy hoạch tổng thể Làng Vườn Nhỏ: 25m ngang x 80m dài = 2.000m² (10 cột x 20 hàng, mỗi lô = 10m²):
+  // Chia làm 4 Cụm từ Nam (Cổng vào - Cụm 1) lên Bắc (Chòi nghỉ cuối khu - Cụm 4):
+  // - Người chơi khởi điểm ở Cụm 3 (row 6..7, col 3..4 = 40m²) ngay ô vườn lớn bên trái trục chính uốn nhẹ.
+  // - Phía Bắc (row 4..5, col 2..4): GĐ Tuấn Kiệt (Times City) đã làm vườn & ao sinh thái sát cạnh -> Chặn hướng Bắc!
+  // - Phía Tây (row 5..8, col 0..0): GĐ Minh Anh (Royal City) đã xây sát rào biên Tây -> Hướng Tây chỉ còn mở rộng tối đa +40m² (col 1..2, row 6..7) là kịch biên!
+  // - Phía Đông (qua trục chính nội bộ 1,4-1,6m sang cánh Đông Cụm 3) và Phía Nam (xuống Cụm 2, Cụm 1) còn trống rộng rãi.
   const neighborZones = [
-    { owner: 'GĐ Tuấn Kiệt (Times City)', c1: 5, c2: 7, r1: 1, r2: 2 }, // 3x2 = 6 lô (60m²) sát biên Bắc
-    { owner: 'GĐ Minh Anh (Royal City)', c1: 1, c2: 2, r1: 2, r2: 5 }, // 2x4 = 8 lô (80m²) cách biên Tây 2 cột
-    { owner: 'GĐ Hùng Cường (Symphony)', c1: 0, c2: 4, r1: 0, r2: 1 }, // 5x2 = 10 lô (100m²) góc Tây Bắc
-    { owner: 'GĐ Hải Yến (Ciputra)', c1: 15, c2: 19, r1: 0, r2: 1 }, // 5x2 = 10 lô (100m²) góc Đông Bắc
-    { owner: 'GĐ Quốc Khánh (Ecopark)', c1: 0, c2: 3, r1: 8, r2: 9 }, // 4x2 = 8 lô (80m²) góc Tây Nam
+    { owner: 'GĐ Tuấn Kiệt (Times City • Cụm 4)', c1: 2, c2: 4, r1: 4, r2: 5 }, // 3x2 = 6 lô (60m²) sát biên Bắc người chơi
+    { owner: 'GĐ Minh Anh (Royal City • Biên Tây)', c1: 0, c2: 0, r1: 5, r2: 8 }, // 1x4 = 4 lô (40m²) cách biên Tây người chơi 2 cột
+    { owner: 'GĐ Hải Yến (Ciputra • Cụm 4)', c1: 0, c2: 3, r1: 0, r2: 1 }, // 4x2 = 8 lô (80m²) góc Tây Bắc Cụm 4
+    { owner: 'Chòi Nghỉ & Khu Sinh Hoạt Chung (Cụm 4)', c1: 5, c2: 9, r1: 0, r2: 1 }, // 5x2 = 10 lô (100m²) điểm nhấn cuối khu
+    { owner: 'GĐ Hùng Cường (Symphony • Cụm 4)', c1: 6, c2: 9, r1: 3, r2: 4 }, // 4x2 = 8 lô (80m²) cánh Đông Cụm 4
+    { owner: 'GĐ Quốc Khánh (Ecopark • Cụm 2)', c1: 6, c2: 9, r1: 12, r2: 13 }, // 4x2 = 8 lô (80m²) cánh Đông Cụm 2
+    { owner: 'GĐ Bảo Trâm (Riverside • Cụm 1)', c1: 0, c2: 2, r1: 18, r2: 19 }, // 3x2 = 6 lô (60m²) gần cổng vào Cụm 1
   ];
 
   const occupiedCells = [];
@@ -596,28 +634,35 @@ export function createDefaultMasterMap() {
   return {
     cols: MASTER_MAP_COLS,
     rows: MASTER_MAP_ROWS,
-    anchorCol: 5,
-    anchorRow: 3,
+    widthM: MASTER_MAP_WIDTH_M,
+    lengthM: MASTER_MAP_LENGTH_M,
+    anchorCol: 3,
+    anchorRow: 6,
     userCells: [],
     occupiedCells,
   };
 }
 
 export function ensureMasterMap(state) {
-  if (!state.masterMap || !Array.isArray(state.masterMap.occupiedCells)) {
+  if (
+    !state.masterMap ||
+    !Array.isArray(state.masterMap.occupiedCells) ||
+    state.masterMap.cols !== MASTER_MAP_COLS ||
+    state.masterMap.rows !== MASTER_MAP_ROWS
+  ) {
     state.masterMap = createDefaultMasterMap();
   }
   const targetUnits = Math.floor((state.rentedAreaM2 || 0) / LAND_UNIT_M2);
   if (state.masterMap.userCells.length === 0 && targetUnits > 0) {
     const occSet = new Set(state.masterMap.occupiedCells.map((o) => `${o.col},${o.row}`));
     const initialOrder = [
-      [5, 3],
-      [6, 3],
-      [5, 4],
-      [6, 4],
+      [3, 6],
+      [4, 6],
+      [3, 7],
+      [4, 7],
     ];
-    for (let r = 3; r < MASTER_MAP_ROWS; r++) {
-      for (let c = 5; c < MASTER_MAP_COLS; c++) {
+    for (let r = 6; r < MASTER_MAP_ROWS; r++) {
+      for (let c = 3; c < MASTER_MAP_COLS; c++) {
         if (!initialOrder.some(([ic, ir]) => ic === c && ir === r)) {
           initialOrder.push([c, r]);
         }
@@ -636,7 +681,7 @@ export function ensureMasterMap(state) {
 export function getUserMapBounds(state) {
   const map = ensureMasterMap(state);
   if (map.userCells.length === 0) {
-    return { minCol: 5, maxCol: 6, minRow: 3, maxRow: 4 };
+    return { minCol: 3, maxCol: 4, minRow: 6, maxRow: 7 };
   }
   let minCol = Infinity;
   let maxCol = -Infinity;
@@ -816,10 +861,10 @@ export function getExpansionCapabilities(state) {
   };
 
   const directions = {
-    north: buildDirectionInfo('north', 'Hướng Bắc', '⬆️ Bắc', '⬆️'),
-    east: buildDirectionInfo('east', 'Hướng Đông (Sông Hồng)', '➡️ Đông', '➡️'),
-    south: buildDirectionInfo('south', 'Hướng Nam (Đường lớn)', '⬇️ Nam', '⬇️'),
-    west: buildDirectionInfo('west', 'Hướng Tây', '⬅️ Tây', '⬅️'),
+    north: buildDirectionInfo('north', 'Hướng Bắc (Về Cụm 4)', '⬆️ Bắc (Cụm 4)', '⬆️'),
+    east: buildDirectionInfo('east', 'Hướng Đông (Qua trục chính)', '➡️ Đông', '➡️'),
+    south: buildDirectionInfo('south', 'Hướng Nam (Về Cụm 2–1)', '⬇️ Nam (Cụm 2–1)', '⬇️'),
+    west: buildDirectionInfo('west', 'Hướng Tây (Biên 25m)', '⬅️ Tây', '⬅️'),
   };
 
   const canExpandAny = Object.values(directions).some((d) => d.canExpand);
@@ -945,16 +990,16 @@ export function rentLandArea(state, additionalAreaM2, direction = null) {
   let chosenDirection = direction || 'east';
 
   if (state.rentedAreaM2 === 0 || map.userCells.length === 0) {
-    // Khởi tạo lô đất đầu tiên tại khu trung tâm (Cột 5..6, Hàng 3..4) trên Map tổng 2.000m²
+    // Khởi tạo lô đất đầu tiên tại Cụm 3 (Cột 3..4, Hàng 6..7) trên Map tổng 25m x 80m (2.000m²)
     const occSet = new Set(map.occupiedCells.map((o) => `${o.col},${o.row}`));
     const initialSeeds = [
-      [5, 3],
-      [6, 3],
-      [5, 4],
-      [6, 4],
+      [3, 6],
+      [4, 6],
+      [3, 7],
+      [4, 7],
     ];
-    for (let r = 3; r < map.rows; r++) {
-      for (let c = 5; c < map.cols; c++) {
+    for (let r = 6; r < map.rows; r++) {
+      for (let c = 3; c < map.cols; c++) {
         if (!initialSeeds.some(([ic, ir]) => ic === c && ir === r)) {
           initialSeeds.push([c, r]);
         }

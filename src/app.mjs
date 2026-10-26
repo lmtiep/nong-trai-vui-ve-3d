@@ -15,6 +15,7 @@ import {
   isBuildingItem,
   ensureMasterMap,
   getUserMapBounds,
+  getClusterInfoByRow,
   getExpansionCapabilities,
   getPreviewExpansionCells,
   MASTER_MAP_COLS,
@@ -24,10 +25,10 @@ import {
   SHOP_CATEGORIES,
   PRICE_PER_10M2,
   MAX_USER_AREA_M2,
-} from './farmEngine.mjs?v=20261026_03';
-import { CuteIslandScene, ShopPreview3D, computeGridDimensions } from './scene3d.mjs?v=20261026_03';
+} from './farmEngine.mjs?v=20261026_04';
+import { CuteIslandScene, ShopPreview3D, computeGridDimensions } from './scene3d.mjs?v=20261026_04';
 
-const STORAGE_KEY = 'nong_trai_vui_ve_state_v3';
+const STORAGE_KEY = 'nong_trai_vui_ve_state_v4';
 
 function loadOrCreateState() {
   try {
@@ -285,11 +286,37 @@ function renderMasterMapUI() {
   const selectedRentM2 = slider ? Number(slider.value) : 20;
   const rentCost = (selectedRentM2 / 10) * PRICE_PER_10M2;
 
+  const startCluster = getClusterInfoByRow(bounds.minRow);
+  const endCluster = getClusterInfoByRow(bounds.maxRow);
+  const clusterLabel =
+    startCluster.id === endCluster.id
+      ? startCluster.name
+      : `${startCluster.shortName} → ${endCluster.shortName}`;
+
   const coordBadge = document.getElementById('user-map-coord-badge');
   if (coordBadge) {
-    const colRange = `C${bounds.minCol + 1}–C${bounds.maxCol + 1}`;
-    const rowRange = `R${bounds.minRow + 1}–R${bounds.maxRow + 1}`;
-    coordBadge.textContent = `📍 Lô của bạn: Cột ${colRange} • Hàng ${rowRange} (${state.rentedAreaM2}m²)`;
+    coordBadge.textContent = `📍 ${clusterLabel} • ${state.rentedAreaM2}m²`;
+  }
+
+  const clusterNameEl = document.getElementById('user-cluster-name');
+  if (clusterNameEl) {
+    clusterNameEl.textContent = `${clusterLabel} (${state.rentedAreaM2}m² / 2.000m²)`;
+  }
+  const clusterDescEl = document.getElementById('user-cluster-desc');
+  if (clusterDescEl) {
+    clusterDescEl.textContent = `${startCluster.desc}. Bạn vẫn chơi chính trên mảnh đất ${state.rentedAreaM2}m² của mình và có thể mở rộng ra các ô trống liền kề trên bản đồ 25m × 80m.`;
+  }
+
+  const pinCallout = document.getElementById('user-map-pin-callout');
+  if (pinCallout) {
+    // Position pin callout right above the center of user's bounds inside the 25x80 garden overlay
+    const centerColRatio = (bounds.minCol + bounds.maxCol + 1) / (2 * MASTER_MAP_COLS);
+    const topRowRatio = bounds.minRow / MASTER_MAP_ROWS;
+    const leftPct = 34.5 + centerColRatio * 64.2;
+    const topPct = Math.max(4, 3.1 + topRowRatio * 93.8 - 1.5);
+    pinCallout.style.left = `${leftPct}%`;
+    pinCallout.style.top = `${topPct}%`;
+    pinCallout.textContent = `🏡 VƯỜN CỦA BẠN (${state.rentedAreaM2}m²)`;
   }
 
   // Render 4 directional buttons
@@ -710,6 +737,23 @@ function initEventListeners() {
   });
 
   document.getElementById('btn-hud-info').addEventListener('click', () => openModal('rent-modal'));
+
+  // Chuyển đổi giữa Tab Map Tương Tác (25m x 80m) và Tab Bản Vẽ Quy Hoạch Chi Tiết (2.000m²)
+  document.querySelectorAll('[data-map-view-tab]').forEach((tabBtn) => {
+    tabBtn.addEventListener('click', () => {
+      const targetTab = tabBtn.getAttribute('data-map-view-tab');
+      document.querySelectorAll('[data-map-view-tab]').forEach((b) => {
+        b.classList.toggle('active', b === tabBtn);
+      });
+      const interactiveView = document.getElementById('map-view-interactive');
+      const blueprintView = document.getElementById('map-view-blueprint');
+      if (interactiveView && blueprintView) {
+        interactiveView.classList.toggle('hidden', targetTab !== 'interactive');
+        blueprintView.classList.toggle('hidden', targetTab !== 'blueprint');
+      }
+    });
+  });
+
   document.getElementById('btn-open-topup').addEventListener('click', (e) => {
     e.stopPropagation();
     openModal('topup-modal');
