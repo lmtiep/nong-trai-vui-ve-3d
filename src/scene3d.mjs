@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_05';
+import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_06';
 
 /**
  * Helper tạo vật liệu Đất Sét Mềm (Soft Matte Claymorphism Shader)
@@ -2573,9 +2573,11 @@ export class MasterMap3D {
     this.renderer = null;
     this.controls = null;
     this.dynamicGroup = null;
+    this.staticTargets = [];
     this.interactiveTargets = [];
     this.animatedPins = [];
     this.previewMeshes = [];
+    this.activeCalloutSprite = null;
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.clock = new THREE.Clock();
@@ -2881,40 +2883,6 @@ export class MasterMap3D {
       this.buildShadeTree(staticGroup, tx, tz, ts);
     }
 
-    // 11. Nhãn 3D hiển thị kích thước 25m x 80m và 4 Cụm (Cụm 1 -> Cụm 4) bên lề trái
-    const topDimSprite = this.createLabelSprite('◄─── RỘNG 25 m (TỔNG KHU 2.000 m²) ───►', {
-      bgColor: 'rgba(15, 23, 42, 0.88)',
-      scaleX: 14,
-      scaleY: 2.3,
-    });
-    topDimSprite.position.set(0, 2.2, -42.5);
-    staticGroup.add(topDimSprite);
-
-    const roadSprite = this.createLabelSprite('🛣️ ĐƯỜNG TRỤC CHÍNH 1 m • CỔNG VÀO LÀNG VƯỜN', {
-      bgColor: 'rgba(30, 41, 59, 0.92)',
-      scaleX: 14.5,
-      scaleY: 2.3,
-    });
-    roadSprite.position.set(0, 1.8, 44.2);
-    staticGroup.add(roadSprite);
-
-    const clusterMarkers = [
-      { z: -28, text: 'CỤM 4 (25m) • Ô lớn & Sinh hoạt chung', bg: 'rgba(21, 128, 61, 0.92)' },
-      { z: -6, text: 'CỤM 3 (20m) • Ô lớn 40–60m²', bg: 'rgba(2, 132, 199, 0.94)' },
-      { z: 14, text: 'CỤM 2 (20m) • Ô vừa 20–30m²', bg: 'rgba(21, 128, 61, 0.92)' },
-      { z: 32, text: 'CỤM 1 (15m) • Ô nhỏ 10–20m²', bg: 'rgba(21, 128, 61, 0.92)' },
-    ];
-    for (const cm of clusterMarkers) {
-      const sp = this.createLabelSprite(cm.text, {
-        bgColor: cm.bg,
-        scaleX: 11.5,
-        scaleY: 2.1,
-        fontSize: 25,
-      });
-      sp.position.set(-19.2, 2.0, cm.z);
-      staticGroup.add(sp);
-    }
-
     this.scene.add(staticGroup);
   }
 
@@ -3034,14 +3002,13 @@ export class MasterMap3D {
     flame.position.set(-1.2, 0.62, 2.8);
     group.add(flame);
 
-    const label = this.createLabelSprite('🏛️ Chòi Nghỉ & Khu Sinh Hoạt Chung', {
-      bgColor: 'rgba(124, 45, 18, 0.92)',
-      scaleX: 9.5,
-      scaleY: 1.85,
-      fontSize: 24,
-    });
-    label.position.set(0, 5.1, 0);
-    group.add(label);
+    patio.userData = {
+      type: 'landmark',
+      label: '🏛️ Chòi nghỉ & Khu sinh hoạt chung (Cụm 4 • 25m)',
+      worldX: x,
+      worldZ: z,
+    };
+    this.staticTargets.push(patio);
 
     parent.add(group);
   }
@@ -3055,6 +3022,13 @@ export class MasterMap3D {
       createClayMaterial(0x0ea5e9, { roughness: 0.22 })
     );
     water.position.y = 0.08;
+    water.userData = {
+      col: 3,
+      row: 4,
+      type: 'neighbor',
+      owner: 'GĐ Tuấn Kiệt (Times City • Cụm 4)',
+    };
+    this.staticTargets.push(water);
     group.add(water);
 
     const stoneMat = createClayMaterial(0x94a3b8, { roughness: 0.85 });
@@ -3346,79 +3320,51 @@ export class MasterMap3D {
       }
     }
 
-    // Ghim 3D nổi bật trên mảnh đất của người chơi ("🏡 VƯỜN CỦA BẠN")
+    // Không hiển thị sẵn hàng loạt chữ trên Map 3D để mặt bằng sạch thoáng.
+    // Trên vườn của người chơi chỉ đặt 1 ngọn hải đăng/biểu tượng ngọc xanh nhỏ gọn (không chữ).
     if (userCount > 0) {
       const ux = userSumX / userCount;
       const uz = userSumZ / userCount;
 
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.1, 0.1, 4.2, 8),
-        createClayMaterial(0xffffff, { roughness: 0.3 })
+      const beaconGem = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.65, 0),
+        createClayMaterial(0x22c55e, { roughness: 0.25 })
       );
-      pole.position.set(ux, 2.2, uz);
-      this.dynamicGroup.add(pole);
-
-      const userPin = this.createLabelSprite(
-        `🏡 VƯỜN CỦA BẠN (${state.rentedAreaM2}m² • Cụm 3)`,
-        {
-          bgColor: 'rgba(22, 163, 74, 0.96)',
-          borderColor: '#ffffff',
-          scaleX: 11.5,
-          scaleY: 2.35,
-          fontSize: 27,
-        }
-      );
-      userPin.position.set(ux, 4.8, uz);
-      userPin.userData = { baseY: 4.8 };
-      this.dynamicGroup.add(userPin);
-      this.animatedPins.push(userPin);
+      beaconGem.position.set(ux, 2.2, uz);
+      beaconGem.userData = { baseY: 2.2, isGem: true };
+      this.dynamicGroup.add(beaconGem);
+      this.animatedPins.push(beaconGem);
     }
 
-    // Ghim 3D cho vùng Sẽ Mở Rộng
-    if (previewCount > 0) {
-      const px = previewSumX / previewCount;
-      const pz = previewSumZ / previewCount;
-      const dirLabels = {
-        north: '⬆️ Hướng Bắc',
-        east: '➡️ Hướng Đông',
-        south: '⬇️ Hướng Nam',
-        west: '⬅️ Hướng Tây',
-      };
-      const prevPin = this.createLabelSprite(
-        `➕ SẼ MỞ RỘNG +${selectedRentM2}m² (${dirLabels[selectedDirection] || ''})`,
-        {
-          bgColor: 'rgba(2, 132, 199, 0.95)',
-          borderColor: '#e0f2fe',
-          scaleX: 11.2,
-          scaleY: 2.15,
-          fontSize: 25,
-        }
-      );
-      prevPin.position.set(px, 3.3, pz);
-      prevPin.userData = { baseY: 3.3 };
-      this.dynamicGroup.add(prevPin);
-      this.animatedPins.push(prevPin);
+    if (this.activeCalloutInfo) {
+      this.renderActiveCallout();
     }
+  }
 
-    // Biển tên 3D cho các hộ hàng xóm xung quanh (đặc biệt là GĐ Tuấn Kiệt chặn biên Bắc & GĐ Minh Anh biên Tây)
-    for (const [ownerName, info] of neighborCenters.entries()) {
-      if (ownerName.includes('Chòi Nghỉ') || info.count === 0) continue;
-      const nx = info.sumX / info.count;
-      const nz = info.sumZ / info.count;
-      const shortOwner = ownerName.split('(')[0].trim();
-      const isNorthBlocker = ownerName.includes('Tuấn Kiệt');
-      const badgeText = isNorthBlocker
-        ? `⛔ ${shortOwner} (Đã xây sát biên Bắc)`
-        : `🚧 ${shortOwner}`;
-      const nPin = this.createLabelSprite(badgeText, {
-        bgColor: isNorthBlocker ? 'rgba(190, 18, 60, 0.92)' : 'rgba(234, 88, 12, 0.9)',
-        scaleX: isNorthBlocker ? 10.2 : 7.6,
-        scaleY: 1.75,
-        fontSize: 23,
-      });
-      nPin.position.set(nx, 2.5, nz);
-      this.dynamicGroup.add(nPin);
+  showCallout(text, x, z, bgColor = 'rgba(15, 23, 42, 0.92)') {
+    this.activeCalloutInfo = { text, x, z, bgColor };
+    this.renderActiveCallout();
+  }
+
+  renderActiveCallout() {
+    if (!this.dynamicGroup || !this.activeCalloutInfo) return;
+    if (this.activeCalloutSprite) {
+      this.dynamicGroup.remove(this.activeCalloutSprite);
+      this.activeCalloutSprite = null;
     }
+    const { text, x, z, bgColor } = this.activeCalloutInfo;
+    const sp = this.createLabelSprite(text, {
+      bgColor,
+      borderColor: '#ffffff',
+      scaleX: 10.5,
+      scaleY: 2.0,
+      fontSize: 25,
+    });
+    sp.position.set(x, 3.8, z);
+    sp.userData = { baseY: 3.8 };
+    this.dynamicGroup.add(sp);
+    this.activeCalloutSprite = sp;
+    this.animatedPins.push(sp);
   }
 
   bindInteraction() {
@@ -3441,11 +3387,20 @@ export class MasterMap3D {
       this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hits = this.raycaster.intersectObjects(this.interactiveTargets, false);
+      const allTargets = [...this.interactiveTargets, ...this.staticTargets];
+      const hits = this.raycaster.intersectObjects(allTargets, false);
       if (hits.length === 0) return;
 
-      const { col, row } = hits[0].object.userData || {};
+      const data = hits[0].object.userData || {};
+      if (data.type === 'landmark') {
+        this.showCallout(data.label, data.worldX, data.worldZ, 'rgba(124, 45, 18, 0.94)');
+        this.onDirectionSelect({ type: 'landmark', label: data.label });
+        return;
+      }
+
+      const { col, row, type, owner } = data;
       if (typeof col !== 'number' || typeof row !== 'number') return;
+      const { x, z } = this.cellToWorld(col, row);
 
       const userCells = this.lastStateRef.masterMap.userCells || [];
       if (userCells.length === 0) return;
@@ -3454,14 +3409,38 @@ export class MasterMap3D {
       const minRow = Math.min(...userCells.map((u) => u.row));
       const maxRow = Math.max(...userCells.map((u) => u.row));
 
-      if (row < minRow) {
-        this.onDirectionSelect('north');
-      } else if (row > maxRow) {
-        this.onDirectionSelect('south');
-      } else if (col < minCol) {
-        this.onDirectionSelect('west');
-      } else if (col > maxCol) {
-        this.onDirectionSelect('east');
+      if (type === 'user') {
+        this.showCallout(
+          `🏡 Vườn của bạn (${this.lastStateRef.rentedAreaM2}m² • Cụm 3)`,
+          x,
+          z,
+          'rgba(22, 163, 74, 0.95)'
+        );
+        this.onDirectionSelect({ type: 'user', col, row });
+        return;
+      }
+
+      let dir = null;
+      if (row < minRow) dir = 'north';
+      else if (row > maxRow) dir = 'south';
+      else if (col < minCol) dir = 'west';
+      else if (col > maxCol) dir = 'east';
+
+      if (type === 'neighbor') {
+        const shortOwner = (owner || 'Hộ gia đình khác').split('(')[0].trim();
+        this.showCallout(`⛔ Đã có chủ: ${shortOwner}`, x, z, 'rgba(190, 18, 60, 0.94)');
+      } else if (dir) {
+        const dirNames = {
+          north: '⬆️ Mở rộng Bắc',
+          east: '➡️ Mở rộng Đông',
+          south: '⬇️ Mở rộng Nam',
+          west: '⬅️ Mở rộng Tây',
+        };
+        this.showCallout(dirNames[dir], x, z, 'rgba(2, 132, 199, 0.94)');
+      }
+
+      if (dir) {
+        this.onDirectionSelect({ type, dir, owner, col, row, x, z });
       }
     });
 
@@ -3484,7 +3463,10 @@ export class MasterMap3D {
     const t = this.clock.getElapsedTime();
     for (const pin of this.animatedPins) {
       if (pin.userData && typeof pin.userData.baseY === 'number') {
-        pin.position.y = pin.userData.baseY + Math.sin(t * 2.8) * 0.28;
+        pin.position.y = pin.userData.baseY + Math.sin(t * 2.8) * 0.24;
+        if (pin.userData.isGem) {
+          pin.rotation.y = t * 1.4;
+        }
       }
     }
     for (const mesh of this.previewMeshes) {

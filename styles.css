@@ -1386,12 +1386,150 @@ html {
 
 .master-map-3d-viewport {
   width: 100%;
-  height: 440px;
+  height: 450px;
   cursor: grab;
 }
 
 .master-map-3d-viewport:active {
   cursor: grabbing;
+}
+
+/* On-demand status pill inside 3D Map (Only visible when user clicks or interacts) */
+.map-click-status-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 6;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  animation: walletPop 0.22s ease;
+}
+
+.map-click-status-bar.hidden {
+  display: none;
+}
+
+.map-click-status-bar.tone-error {
+  background: rgba(185, 28, 28, 0.94);
+}
+
+.map-click-status-bar.tone-success {
+  background: rgba(21, 128, 61, 0.94);
+}
+
+/* "!" Help Tooltip Button & Popover (Hover or Click to reveal help text) */
+.modal-title-with-help,
+.section-header-with-help {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-tip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.help-bang-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid #94a3b8;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.help-bang-btn:hover,
+.help-tip-wrap.help-open .help-bang-btn {
+  background: #0284c7;
+  border-color: #0369a1;
+  color: #ffffff;
+  transform: scale(1.08);
+}
+
+.help-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 80;
+  width: 310px;
+  max-width: 82vw;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(10px);
+  color: #f8fafc;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.45;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+}
+
+.help-popover-up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: auto;
+  right: 0;
+}
+
+.help-tip-wrap:hover .help-popover,
+.help-tip-wrap.help-open .help-popover {
+  display: block;
+}
+
+.help-popover strong {
+  color: #86efac;
+}
+
+.help-popover ul {
+  margin-top: 5px;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.help-popover p {
+  margin-top: 4px;
+  color: #e2e8f0;
+}
+
+.mastery-compact-bar {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manage-chip-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
 }
 
 .master-map-cam-toolbar {
@@ -1511,11 +1649,10 @@ html {
 }
 
 .direction-section-label {
-  display: block;
-  font-size: 0.82rem;
+  display: inline-block;
+  font-size: 0.84rem;
   font-weight: 800;
   color: #1e293b;
-  margin-bottom: 6px;
 }
 
 .expansion-direction-grid {

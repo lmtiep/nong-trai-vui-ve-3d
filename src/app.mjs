@@ -25,13 +25,13 @@ import {
   SHOP_CATEGORIES,
   PRICE_PER_10M2,
   MAX_USER_AREA_M2,
-} from './farmEngine.mjs?v=20261026_05';
+} from './farmEngine.mjs?v=20261026_06';
 import {
   CuteIslandScene,
   ShopPreview3D,
   MasterMap3D,
   computeGridDimensions,
-} from './scene3d.mjs?v=20261026_05';
+} from './scene3d.mjs?v=20261026_06';
 
 const STORAGE_KEY = 'nong_trai_vui_ve_state_v4';
 
@@ -171,28 +171,56 @@ function openModal(id) {
       }
     });
   } else if (id === 'rent-modal') {
+    const statusBar = document.getElementById('map-click-status-bar');
+    if (statusBar) statusBar.classList.add('hidden');
     requestAnimationFrame(() => {
       if (!masterMap3D) {
         const mapViewport = document.getElementById('master-map-3d-viewport');
         if (mapViewport) {
-          masterMap3D = new MasterMap3D(mapViewport, (clickedDir) => {
+          masterMap3D = new MasterMap3D(mapViewport, (interactEvent) => {
+            if (!interactEvent) return;
+            if (interactEvent.type === 'landmark') {
+              showMapStatusMessage(interactEvent.label, 'info');
+              return;
+            }
+            if (interactEvent.type === 'user') {
+              const bounds = getUserMapBounds(state);
+              const cl = getClusterInfoByRow(bounds.minRow);
+              showMapStatusMessage(
+                `🏡 Vườn của bạn: ${state.rentedAreaM2}m² tại ${cl.name} (${cl.desc})`,
+                'success'
+              );
+              return;
+            }
+            const clickedDir =
+              typeof interactEvent === 'string' ? interactEvent : interactEvent.dir;
+            if (!clickedDir) return;
             const caps = getExpansionCapabilities(state);
             const info = caps[clickedDir];
             if (!info) return;
             if (!info.canExpand) {
-              showToast(`⛔ ${info.label}: ${info.statusText}`, 'error');
+              showMapStatusMessage(`⛔ ${info.shortLabel}: ${info.statusText}`, 'error');
               return;
             }
             selectedExpansionDirection = clickedDir;
+            showMapStatusMessage(`🧭 Đã chọn ${info.shortLabel}: ${info.statusText}`, 'info');
             renderMasterMapUI();
           });
         }
       } else {
+        masterMap3D.activeCalloutInfo = null;
         masterMap3D.resize();
       }
       renderMasterMapUI();
     });
   }
+}
+
+function showMapStatusMessage(text, tone = 'info') {
+  const bar = document.getElementById('map-click-status-bar');
+  if (!bar) return;
+  bar.textContent = text;
+  bar.className = `map-click-status-bar tone-${tone}`;
 }
 
 function closeAllModals() {
@@ -326,16 +354,7 @@ function renderMasterMapUI() {
     coordBadge.textContent = `📍 ${clusterLabel} • ${state.rentedAreaM2}m²`;
   }
 
-  const clusterNameEl = document.getElementById('user-cluster-name');
-  if (clusterNameEl) {
-    clusterNameEl.textContent = `${clusterLabel} (${state.rentedAreaM2}m² / 2.000m²)`;
-  }
-  const clusterDescEl = document.getElementById('user-cluster-desc');
-  if (clusterDescEl) {
-    clusterDescEl.textContent = `${startCluster.desc}. Bạn vẫn chơi chính trên mảnh đất ${state.rentedAreaM2}m² của mình và mở sa bàn 3D 25m × 80m để xem các hướng có thể mở rộng thêm.`;
-  }
-
-  // Render 4 directional buttons
+  // Render 4 directional buttons (Tối giản: chỉ hiện tên hướng ngắn gọn + hạn mức, không hiện đoạn văn dài)
   const dirGrid = document.getElementById('expansion-direction-grid');
   if (dirGrid) {
     const dirOrder = ['north', 'east', 'south', 'west'];
@@ -352,12 +371,11 @@ function renderMasterMapUI() {
             data-expand-dir="${dirKey}"
           >
             <div class="dir-card-top">
-              <span class="dir-card-title">${escapeHtml(info.label)}</span>
+              <span class="dir-card-title">${escapeHtml(info.shortLabel)}</span>
               <span class="dir-card-badge ${isBlocked ? 'badge-blocked' : 'badge-open'}">
-                ${isBlocked ? '⛔ Kịch biên' : `Tối đa +${info.maxExpandM2}m²`}
+                ${isBlocked ? '⛔ Kịch biên' : `+${info.maxExpandM2}m²`}
               </span>
             </div>
-            <div class="dir-card-desc">${escapeHtml(info.statusText)}</div>
           </button>
         `;
       })
@@ -369,10 +387,14 @@ function renderMasterMapUI() {
         const info = capabilities[dirKey];
         if (!info) return;
         if (!info.canExpand) {
-          showToast(`⛔ ${info.label}: ${info.statusText}`, 'error');
+          showMapStatusMessage(`⛔ ${info.shortLabel}: ${info.statusText}`, 'error');
+          if (masterMap3D) {
+            masterMap3D.showCallout(`⛔ ${info.shortLabel}: Kịch biên`, -3.5, -18, 'rgba(190, 18, 60, 0.94)');
+          }
           return;
         }
         selectedExpansionDirection = dirKey;
+        showMapStatusMessage(`🧭 ${info.shortLabel}: ${info.statusText}`, 'info');
         renderMasterMapUI();
       });
     });
@@ -391,9 +413,9 @@ function renderMasterMapUI() {
   const rentBtn = document.getElementById('btn-rent-land');
   if (previewEl) {
     if (!activeDirInfo || !activeDirInfo.canExpand) {
-      previewEl.textContent = `⛔ ${activeDirInfo ? activeDirInfo.statusText : 'Không thể mở rộng hướng này'}`;
+      previewEl.textContent = `⛔ Kịch biên`;
     } else {
-      previewEl.textContent = `+${selectedRentM2}m² về ${activeDirInfo.label} (Mở rộng thêm ${selectedRentM2} ô 1x1m) = ${formatVnd(rentCost)}`;
+      previewEl.textContent = `+${selectedRentM2}m² (${activeDirInfo.shortLabel}) • ${formatVnd(rentCost)}`;
     }
   }
   if (rentBtn) {
@@ -402,7 +424,7 @@ function renderMasterMapUI() {
       rentBtn.textContent = '⛔ Hướng này đã kịch biên';
     } else {
       rentBtn.disabled = false;
-      rentBtn.textContent = `Xác nhận mở rộng +${selectedRentM2}m² (${activeDirInfo.label} • ${formatVnd(rentCost)})`;
+      rentBtn.textContent = `➕ Mở rộng +${selectedRentM2}m² (${formatVnd(rentCost)})`;
     }
   }
 }
@@ -463,7 +485,7 @@ function updateUI() {
 
   const totalUsedM2 = state.otherFamiliesRentedM2 + state.rentedAreaM2;
   document.getElementById('pool-summary-text').textContent =
-    `Quỹ đất 2.000m² Riverside Long Biên: Đã thuê ${totalUsedM2}m² (Của bạn: ${state.rentedAreaM2}m²)`;
+    `Đã thuê ${totalUsedM2}m² / 2.000m² (Của bạn: ${state.rentedAreaM2}m²)`;
   document.getElementById('pool-bar-user').style.width = `${(state.rentedAreaM2 / 2000) * 100}%`;
   document.getElementById('pool-bar-others').style.width = `${(state.otherFamiliesRentedM2 / 2000) * 100}%`;
 
@@ -724,6 +746,28 @@ function initEventListeners() {
       if (masterMap3D) {
         masterMap3D.setCameraPreset(preset, state);
       }
+    });
+  });
+
+  // Nút "!" (Help Tooltip): Hiện khi di chuột hoặc bấm vào dấu "!"
+  document.querySelectorAll('.help-bang-btn').forEach((bangBtn) => {
+    bangBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wrap = bangBtn.closest('.help-tip-wrap');
+      if (!wrap) return;
+      const wasOpen = wrap.classList.contains('help-open');
+      document.querySelectorAll('.help-tip-wrap.help-open').forEach((w) => {
+        w.classList.remove('help-open');
+      });
+      if (!wasOpen) {
+        wrap.classList.add('help-open');
+      }
+    });
+  });
+
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.help-tip-wrap.help-open').forEach((w) => {
+      w.classList.remove('help-open');
     });
   });
 
