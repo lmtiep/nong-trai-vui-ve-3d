@@ -1280,7 +1280,7 @@ html {
 
 .master-map-split-layout {
   display: grid;
-  grid-template-columns: minmax(290px, 410px) 1fr;
+  grid-template-columns: 1.25fr 1fr;
   gap: 16px;
   align-items: start;
   margin-bottom: 14px;
@@ -1373,121 +1373,64 @@ html {
   border: 1.5px solid #86efac;
 }
 
-/* Visual 25m x 80m strip with 10x20 grid overlay aligned over the fenced garden */
-.village-strip-visual-wrap {
+/* 100% 3D Master Map Viewport (25m x 80m = 2.000m² Village) */
+.master-map-3d-wrap {
   position: relative;
   width: 100%;
-  max-width: 380px;
-  margin: 0 auto;
   border-radius: 14px;
   overflow: hidden;
   border: 2px solid #86efac;
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14);
-  background: #d8e2dc;
+  background: #dbf0ff;
 }
 
-.village-strip-bg-img {
-  display: block;
+.master-map-3d-viewport {
   width: 100%;
-  height: auto;
+  height: 440px;
+  cursor: grab;
 }
 
-.master-map-grid-overlay {
+.master-map-3d-viewport:active {
+  cursor: grabbing;
+}
+
+.master-map-cam-toolbar {
   position: absolute;
-  top: 3.1%;
-  left: 34.5%;
-  width: 64.2%;
-  height: 93.8%;
-  display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  grid-template-rows: repeat(20, minmax(0, 1fr));
-  gap: 1px;
-  z-index: 3;
-}
-
-.map-cell {
-  border-radius: 2px;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 5;
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
   justify-content: center;
-  font-size: 0.56rem;
-  line-height: 1;
-  transition: transform 0.12s ease, background 0.12s ease;
-  cursor: pointer;
-}
-
-.map-cell:hover {
-  transform: scale(1.22);
-  z-index: 6;
-}
-
-.map-cell-free {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.map-cell-free:hover {
-  background: rgba(187, 247, 208, 0.45);
-  border-color: #4ade80;
-}
-
-.map-cell-user {
-  background: rgba(34, 197, 94, 0.78);
-  border: 1.5px solid #ffffff;
-  color: #ffffff;
-  box-shadow: 0 0 8px rgba(22, 163, 74, 0.85);
-}
-
-.map-cell-neighbor {
-  background: rgba(249, 115, 22, 0.68);
-  border: 1px solid rgba(255, 237, 213, 0.9);
-  color: #ffffff;
-}
-
-.map-cell-preview {
-  background: rgba(14, 165, 233, 0.82);
-  border: 1.5px dashed #ffffff;
-  color: #ffffff;
-  animation: pulsePreviewCell 0.95s infinite alternate ease-in-out;
-}
-
-.user-map-pin-callout {
-  position: absolute;
-  top: 32%;
-  left: 60%;
-  transform: translate(-50%, -100%);
-  z-index: 8;
-  background: #15803d;
-  color: #ffffff;
-  border: 2px solid #ffffff;
-  border-radius: 99px;
-  padding: 3px 9px;
-  font-size: 0.68rem;
-  font-weight: 900;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   pointer-events: none;
-  animation: pinFloat 1.5s infinite ease-in-out alternate;
 }
 
-@keyframes pinFloat {
-  0% {
-    transform: translate(-50%, -100%) translateY(0);
-  }
-  100% {
-    transform: translate(-50%, -100%) translateY(-4px);
-  }
+.cam-preset-btn {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid #bbf7d0;
+  border-radius: 99px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #14532d;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
+  transition: all 0.15s ease;
 }
 
-@keyframes pulsePreviewCell {
-  0% {
-    transform: scale(0.94);
-    opacity: 0.82;
-  }
-  100% {
-    transform: scale(1.05);
-    opacity: 1;
-  }
+.cam-preset-btn:hover {
+  background: #dcfce7;
+  transform: translateY(-1px);
+}
+
+.cam-preset-btn.active {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #ffffff;
 }
 
 .village-expansion-panel {
@@ -1827,28 +1770,19 @@ html {
     font-size: 0.76rem;
   }
 
-  /* 2,000m² (25m x 80m) Master Map on Mobile */
-  .master-map-mode-tabs {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .map-mode-tab {
-    font-size: 0.75rem;
-    padding: 7px 8px;
-  }
-
+  /* 2,000m² (25m x 80m) 3D Master Map on Mobile */
   .master-map-split-layout {
     grid-template-columns: 1fr;
     gap: 12px;
   }
 
-  .village-strip-visual-wrap {
-    max-width: 310px;
+  .master-map-3d-viewport {
+    height: 300px;
   }
 
-  .map-cell {
-    font-size: 0.45rem;
+  .cam-preset-btn {
+    font-size: 0.66rem;
+    padding: 4px 8px;
   }
 
   .blueprint-specs-grid {

@@ -7,7 +7,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>Nông Trại Vui Vẻ 3D • Đảo Riêng Ven Hà Nội</title>
-    <link rel="stylesheet" href="./styles.css?v=20261026_04" />
+    <link rel="stylesheet" href="./styles.css?v=20261026_05" />
     <script type="importmap">
       {
         "imports": {
@@ -170,11 +170,11 @@
       </div>
     </div>
 
-    <!-- MODAL 2: Master Map 2.000m2 (25m x 80m) & Directional Land Expansion -->
+    <!-- MODAL 2: 3D Master Map 2.000m2 (25m x 80m) & Directional Land Expansion -->
     <div id="rent-modal" class="modal-backdrop hidden">
       <div class="modal-box modal-map-wide">
         <div class="modal-header">
-          <h3>🗺️ Bản Đồ Tổng Thể Làng Vườn 2.000m² (25m × 80m)</h3>
+          <h3>🗺️ Map Tổng Thể 3D Làng Vườn 2.000m² (25m × 80m)</h3>
           <div class="modal-header-actions">
             <button type="button" class="modal-wallet-chip" data-open-modal="topup-modal" title="Bấm để nạp thêm tiền">
               💰 Quỹ: <strong data-live-wallet>7.200.000đ</strong> <span class="chip-plus">＋</span>
@@ -183,49 +183,58 @@
           </div>
         </div>
         <div class="modal-body">
-          <!-- Thanh chuyển đổi chế độ xem Map Tổng Thể 2.000m² -->
-          <div class="master-map-mode-tabs">
-            <button type="button" class="map-mode-tab active" data-map-view-tab="interactive">
-              📍 Vị Trí Của Bạn &amp; Mở Rộng Trên Map (25m × 80m)
-            </button>
-            <button type="button" class="map-mode-tab" data-map-view-tab="blueprint">
-              📐 Bản Vẽ Quy Hoạch Chi Tiết 4 Cụm (2.000m²)
-            </button>
-          </div>
-
-          <!-- TAB 1: Bản Đồ Làng Vườn 25m x 80m Tương Tác Trực Tiếp & Chọn Hướng Mở Rộng -->
-          <div id="map-view-interactive" class="master-map-split-layout">
-            <!-- Cột Trái: Mặt bằng thực tế 25m x 80m (4 Cụm) kèm lưới định vị lô đất của người chơi -->
+          <!-- Bố cục 2 cột: Cột Trái là Sa Bàn 3D Làng Vườn 25m x 80m (4 Cụm), Cột Phải là Kiểm tra & Mở rộng đất -->
+          <div class="master-map-split-layout">
+            <!-- Cột Trái: Sa bàn 3D toàn khu 25m x 80m = 2.000m² dựng 100% bằng 3D -->
             <div class="village-strip-card">
               <div class="village-strip-header">
                 <div>
-                  <strong>🌿 Mặt bằng Làng Vườn 25m × 80m (2.000m²)</strong>
-                  <div class="village-strip-sub">Trục chính 1,4–1,6m uốn nhẹ • 4 Cụm (Cụm 1 → Cụm 4)</div>
+                  <strong>🌳 Sa bàn 3D Làng Vườn 25m × 80m (2.000m²)</strong>
+                  <div class="village-strip-sub">
+                    Trục chính 1,4–1,6m uốn nhẹ • Nhánh 0,8–1m • 4 Cụm (Cụm 1 → Cụm 4) • Chòi nghỉ cuối khu
+                  </div>
                 </div>
                 <span id="user-map-coord-badge" class="map-coord-badge">📍 Cụm 3 • 40m²</span>
               </div>
 
               <div class="master-map-legend">
-                <span class="legend-item"><i class="legend-dot dot-user"></i> Vườn của bạn</span>
+                <span class="legend-item"><i class="legend-dot dot-user"></i> Vườn của bạn (Cụm 3)</span>
                 <span class="legend-item"><i class="legend-dot dot-preview"></i> Sẽ mở rộng</span>
-                <span class="legend-item"><i class="legend-dot dot-neighbor"></i> Đã có chủ</span>
+                <span class="legend-item"><i class="legend-dot dot-neighbor"></i> Hộ khác đã xây</span>
                 <span class="legend-item"><i class="legend-dot dot-free"></i> Đất trống</span>
               </div>
 
-              <div class="village-strip-visual-wrap">
-                <img
-                  src="./assets/master_plan_strip_25x80.jpg"
-                  alt="Mặt bằng tổng thể 25m x 80m = 2.000m² chia 4 Cụm"
-                  class="village-strip-bg-img"
-                />
-                <!-- Lưới 10 cột (25m) x 20 hàng (80m) = 200 lô 10m² phủ khớp lên khu vườn trong ảnh -->
+              <!-- Khung WebGL 3D tương tác xoay/zoom/chạm chọn hướng của toàn khu 25m x 80m -->
+              <div class="master-map-3d-wrap">
                 <div
-                  id="master-map-grid"
-                  class="master-map-grid-overlay"
-                  title="Bản đồ tổng thể 25m × 80m = 2.000m² (10 cột × 20 hàng, mỗi ô = 10m²)"
+                  id="master-map-3d-viewport"
+                  class="master-map-3d-viewport"
+                  title="Kéo để xoay 3D, lăn chuột để zoom, bấm vào các ô đất xung quanh để chọn hướng mở rộng"
                 ></div>
-                <div id="user-map-pin-callout" class="user-map-pin-callout">
-                  🏡 VƯỜN CỦA BẠN (40m²)
+                <div class="master-map-cam-toolbar">
+                  <button type="button" class="cam-preset-btn active" data-map-cam="overview">
+                    🦅 Toàn cảnh 25×80m
+                  </button>
+                  <button type="button" class="cam-preset-btn" data-map-cam="focus_user">
+                    🏡 Vườn của bạn (Cụm 3)
+                  </button>
+                  <button type="button" class="cam-preset-btn" data-map-cam="top_down">
+                    📐 Mặt bằng đứng
+                  </button>
+                  <button type="button" class="cam-preset-btn" data-map-cam="walk_path">
+                    🏛️ Trục chính &amp; Chòi nghỉ
+                  </button>
+                </div>
+              </div>
+
+              <div class="blueprint-specs-grid">
+                <div class="blueprint-spec-item">
+                  <strong>📐 Quy mô: 25m × 80m = 2.000m²</strong>
+                  <span>Đường nội bộ 120–160m² (6–8%) • Hàng rào gỗ thấp 0,8–1,2m</span>
+                </div>
+                <div class="blueprint-spec-item">
+                  <strong>🌿 4 Cụm (Nam → Bắc dọc 80m)</strong>
+                  <span>Cụm 1 (15m: 10–20m²) • Cụm 2 (20m: 20–30m²) • Cụm 3 (20m: 40–60m²) • Cụm 4 (25m: Chòi nghỉ)</span>
                 </div>
               </div>
             </div>
@@ -234,7 +243,7 @@
             <div class="village-expansion-panel">
               <div class="village-cluster-info-box" id="user-cluster-summary-box">
                 <div class="cluster-info-title">
-                  🏡 <strong>Vườn của bạn đang nằm tại: <span id="user-cluster-name">Cụm 3 (20m)</span></strong>
+                  🏡 <strong>Vị trí của bạn trên Map 3D: <span id="user-cluster-name">Cụm 3 (20m)</span></strong>
                 </div>
                 <p id="user-cluster-desc">
                   Khu đa dạng có ô lớn 40–60m², nằm cạnh trục chính nội bộ uốn nhẹ (1,4–1,6m) và nút mở rộng có giàn hoa, ghế nghỉ.
@@ -244,7 +253,7 @@
               <!-- Chọn hướng mở rộng (Bắc / Đông / Nam / Tây) -->
               <div class="expansion-direction-section">
                 <div class="direction-section-label">
-                  🧭 <strong>Kiểm tra &amp; Chọn hướng mở rộng trên Map 2.000m²:</strong>
+                  🧭 <strong>Kiểm tra &amp; Chọn hướng mở rộng trên Map 3D 2.000m²:</strong>
                 </div>
                 <div id="expansion-direction-grid" class="expansion-direction-grid"></div>
               </div>
@@ -276,35 +285,6 @@
               <button type="button" id="btn-rent-land" class="btn-primary-full">
                 ➕ Xác Nhận Mở Rộng Đất Theo Hướng Đã Chọn
               </button>
-            </div>
-          </div>
-
-          <!-- TAB 2: Bản Vẽ Quy Hoạch Chi Tiết Toàn Khu 25m x 80m = 2.000m² (Full Architectural Sheet) -->
-          <div id="map-view-blueprint" class="master-blueprint-sheet hidden">
-            <div class="blueprint-image-frame">
-              <img
-                src="./assets/master_plan_2000m2.jpg"
-                alt="Bản vẽ thiết kế tổng thể khu đất 25m x 80m = 2.000m²"
-                class="blueprint-full-img"
-              />
-            </div>
-            <div class="blueprint-specs-grid">
-              <div class="blueprint-spec-item">
-                <strong>📐 Tổng diện tích khu đất</strong>
-                <span>25 m × 80 m = 2.000 m²</span>
-              </div>
-              <div class="blueprint-spec-item">
-                <strong>🛤️ Trục chính &amp; Nhánh vào vườn</strong>
-                <span>Trục chính 1,4–1,6m uốn nhẹ (120–160m²) • Nhánh 0,8–1m</span>
-              </div>
-              <div class="blueprint-spec-item">
-                <strong>🌿 Phân bổ 4 Cụm (Nam → Bắc)</strong>
-                <span>Cụm 1 (15m: 10–20m²) • Cụm 2 (20m: 20–30m²) • Cụm 3 (20m: 40–60m²) • Cụm 4 (25m: Ô lớn &amp; Khu sinh hoạt chung)</span>
-              </div>
-              <div class="blueprint-spec-item">
-                <strong>🏡 Phong cách Làng Vườn Nhỏ</strong>
-                <span>Hàng rào tự nhiên cao 0,8–1,2m • Chòi nghỉ cuối khu • Nút mở rộng giàn hoa</span>
-              </div>
             </div>
           </div>
 
@@ -511,6 +491,6 @@
       </div>
     </div>
 
-    <script type="module" src="./src/app.mjs?v=20261026_04"></script>
+    <script type="module" src="./src/app.mjs?v=20261026_05"></script>
   </body>
 </html>

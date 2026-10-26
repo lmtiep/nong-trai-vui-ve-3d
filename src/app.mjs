@@ -25,8 +25,13 @@ import {
   SHOP_CATEGORIES,
   PRICE_PER_10M2,
   MAX_USER_AREA_M2,
-} from './farmEngine.mjs?v=20261026_04';
-import { CuteIslandScene, ShopPreview3D, computeGridDimensions } from './scene3d.mjs?v=20261026_04';
+} from './farmEngine.mjs?v=20261026_05';
+import {
+  CuteIslandScene,
+  ShopPreview3D,
+  MasterMap3D,
+  computeGridDimensions,
+} from './scene3d.mjs?v=20261026_05';
 
 const STORAGE_KEY = 'nong_trai_vui_ve_state_v4';
 
@@ -72,6 +77,7 @@ let lastSlideDir = 0;
 let selectedExpansionDirection = 'east';
 let island3D = null;
 let shopPreview3D = null;
+let masterMap3D = null;
 
 function stepPreviewStage(dir) {
   const selItem = ITEM_CATALOG[selectedShopItemId];
@@ -163,6 +169,28 @@ function openModal(id) {
         shopPreview3D.currentItemId = null;
         shopPreview3D.showItem(ITEM_CATALOG[selectedShopItemId], selectedPreviewStage);
       }
+    });
+  } else if (id === 'rent-modal') {
+    requestAnimationFrame(() => {
+      if (!masterMap3D) {
+        const mapViewport = document.getElementById('master-map-3d-viewport');
+        if (mapViewport) {
+          masterMap3D = new MasterMap3D(mapViewport, (clickedDir) => {
+            const caps = getExpansionCapabilities(state);
+            const info = caps[clickedDir];
+            if (!info) return;
+            if (!info.canExpand) {
+              showToast(`⛔ ${info.label}: ${info.statusText}`, 'error');
+              return;
+            }
+            selectedExpansionDirection = clickedDir;
+            renderMasterMapUI();
+          });
+        }
+      } else {
+        masterMap3D.resize();
+      }
+      renderMasterMapUI();
     });
   }
 }
@@ -304,19 +332,7 @@ function renderMasterMapUI() {
   }
   const clusterDescEl = document.getElementById('user-cluster-desc');
   if (clusterDescEl) {
-    clusterDescEl.textContent = `${startCluster.desc}. Bạn vẫn chơi chính trên mảnh đất ${state.rentedAreaM2}m² của mình và có thể mở rộng ra các ô trống liền kề trên bản đồ 25m × 80m.`;
-  }
-
-  const pinCallout = document.getElementById('user-map-pin-callout');
-  if (pinCallout) {
-    // Position pin callout right above the center of user's bounds inside the 25x80 garden overlay
-    const centerColRatio = (bounds.minCol + bounds.maxCol + 1) / (2 * MASTER_MAP_COLS);
-    const topRowRatio = bounds.minRow / MASTER_MAP_ROWS;
-    const leftPct = 34.5 + centerColRatio * 64.2;
-    const topPct = Math.max(4, 3.1 + topRowRatio * 93.8 - 1.5);
-    pinCallout.style.left = `${leftPct}%`;
-    pinCallout.style.top = `${topPct}%`;
-    pinCallout.textContent = `🏡 VƯỜN CỦA BẠN (${state.rentedAreaM2}m²)`;
+    clusterDescEl.textContent = `${startCluster.desc}. Bạn vẫn chơi chính trên mảnh đất ${state.rentedAreaM2}m² của mình và mở sa bàn 3D 25m × 80m để xem các hướng có thể mở rộng thêm.`;
   }
 
   // Render 4 directional buttons
@@ -362,53 +378,13 @@ function renderMasterMapUI() {
     });
   }
 
-  // Render 20x10 Master Map Grid (200 cells x 10m2 = 2,000m2)
-  const mapGrid = document.getElementById('master-map-grid');
-  if (mapGrid) {
-    const previewCells =
-      activeDirInfo && activeDirInfo.canExpand
-        ? getPreviewExpansionCells(state, selectedExpansionDirection, selectedRentM2)
-        : [];
-    const previewSet = new Set(previewCells.map((c) => `${c.col},${c.row}`));
+  const previewCells =
+    activeDirInfo && activeDirInfo.canExpand
+      ? getPreviewExpansionCells(state, selectedExpansionDirection, selectedRentM2)
+      : [];
 
-    const userSet = new Set(
-      (state.masterMap.userCells || []).map((u) => `${u.col},${u.row}`)
-    );
-    const neighborMap = new Map(
-      (state.masterMap.occupiedCells || []).map((o) => [`${o.col},${o.row}`, o.owner])
-    );
-
-    const cellsHtml = [];
-    for (let r = 0; r < MASTER_MAP_ROWS; r++) {
-      for (let c = 0; c < MASTER_MAP_COLS; c++) {
-        const key = `${c},${r}`;
-        const isUser = userSet.has(key);
-        const neighborOwner = neighborMap.get(key);
-        const isPreview = previewSet.has(key);
-        let cls = 'map-cell-free';
-        let label = '';
-        let tooltip = `Lô (C${c + 1}, R${r + 1}) • 10m²: Đất trống`;
-
-        if (isUser) {
-          cls = 'map-cell-user';
-          label = '🏡';
-          tooltip = `Lô của bạn (C${c + 1}, R${r + 1}) • 10m²`;
-        } else if (neighborOwner) {
-          cls = 'map-cell-neighbor';
-          label = '🚧';
-          tooltip = `Đã có chủ: ${neighborOwner} (C${c + 1}, R${r + 1}) • Không thể mở rộng đè lên`;
-        } else if (isPreview) {
-          cls = 'map-cell-preview';
-          label = '➕';
-          tooltip = `Dự kiến mở rộng (${activeDirInfo.label}) • Lô (C${c + 1}, R${r + 1}) • 10m²`;
-        }
-
-        cellsHtml.push(
-          `<div class="map-cell ${cls}" title="${escapeHtml(tooltip)}"><span>${label}</span></div>`
-        );
-      }
-    }
-    mapGrid.innerHTML = cellsHtml.join('');
+  if (masterMap3D) {
+    masterMap3D.updateState(state, selectedExpansionDirection, selectedRentM2, previewCells);
   }
 
   const previewEl = document.getElementById('rent-area-preview');
@@ -738,18 +714,15 @@ function initEventListeners() {
 
   document.getElementById('btn-hud-info').addEventListener('click', () => openModal('rent-modal'));
 
-  // Chuyển đổi giữa Tab Map Tương Tác (25m x 80m) và Tab Bản Vẽ Quy Hoạch Chi Tiết (2.000m²)
-  document.querySelectorAll('[data-map-view-tab]').forEach((tabBtn) => {
-    tabBtn.addEventListener('click', () => {
-      const targetTab = tabBtn.getAttribute('data-map-view-tab');
-      document.querySelectorAll('[data-map-view-tab]').forEach((b) => {
-        b.classList.toggle('active', b === tabBtn);
+  // Các nút chọn góc nhìn Camera trên Sa Bàn 3D 25m x 80m
+  document.querySelectorAll('[data-map-cam]').forEach((camBtn) => {
+    camBtn.addEventListener('click', () => {
+      const preset = camBtn.getAttribute('data-map-cam');
+      document.querySelectorAll('[data-map-cam]').forEach((b) => {
+        b.classList.toggle('active', b === camBtn);
       });
-      const interactiveView = document.getElementById('map-view-interactive');
-      const blueprintView = document.getElementById('map-view-blueprint');
-      if (interactiveView && blueprintView) {
-        interactiveView.classList.toggle('hidden', targetTab !== 'interactive');
-        blueprintView.classList.toggle('hidden', targetTab !== 'blueprint');
+      if (masterMap3D) {
+        masterMap3D.setCameraPreset(preset, state);
       }
     });
   });

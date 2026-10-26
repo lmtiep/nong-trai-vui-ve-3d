@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_04';
+import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_05';
 
 /**
  * Helper tạo vật liệu Đất Sét Mềm (Soft Matte Claymorphism Shader)
@@ -2552,6 +2552,958 @@ export class ShopPreview3D {
       this.slideScale += (1 - this.slideScale) * 0.22;
       this.itemHolder.scale.setScalar(this.slideScale);
     }
+    if (this.controls) this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
+/**
+ * 3D Master Map Scene (25m x 80m = 2.000m² "Làng Vườn Nhỏ" 4 Cụm)
+ * Dựng 100% bằng 3D Three.js theo đúng thiết kế:
+ * - Kích thước 25m ngang (10 cột x 2.5m) x 80m dài (20 hàng x 4.0m) = 2.000m²
+ * - 4 Cụm: Cụm 1 (15m: Ô nhỏ 10-20m²), Cụm 2 (20m: Ô vừa 20-30m²), Cụm 3 (20m: Ô lớn 40-60m² - Vị trí người chơi), Cụm 4 (25m: Ô lớn & Khu sinh hoạt chung)
+ * - Trục chính nội bộ 1,4-1,6m uốn nhẹ hình chữ S, nhánh vào vườn 0,8-1m, nút mở rộng (giàn hoa, ghế nghỉ, cây anh đào), điểm nhấn cuối khu (Chòi nghỉ bát giác & sân sinh hoạt chung)
+ */
+export class MasterMap3D {
+  constructor(container, onDirectionSelect) {
+    this.container = container;
+    this.onDirectionSelect = onDirectionSelect;
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.controls = null;
+    this.dynamicGroup = null;
+    this.interactiveTargets = [];
+    this.animatedPins = [];
+    this.previewMeshes = [];
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2();
+    this.clock = new THREE.Clock();
+    this.cameraTargetGoal = null;
+    this.cameraPosGoal = null;
+    this.lastStateRef = null;
+    this.init();
+  }
+
+  getMainPathCenterX(z) {
+    // Đường trục chính nội bộ 1,4 - 1,6m uốn nhẹ tự nhiên từ Cổng Nam (z=+40) lên Chòi nghỉ Cụm 4 (z=-34)
+    const t = Math.max(0, Math.min(1, (40 - z) / 74));
+    return Math.sin(t * Math.PI * 3.15) * 1.9 + Math.pow(t, 1.45) * 2.2;
+  }
+
+  cellToWorld(col, row) {
+    // 10 cột x 2.5m = 25m (-12.5 .. +12.5), 20 hàng x 4.0m = 80m (-40 .. +40)
+    const x = -12.5 + col * 2.5 + 1.25;
+    const z = -40 + row * 4.0 + 2.0;
+    return { x, z, w: 2.5, d: 4.0 };
+  }
+
+  createLabelSprite(text, options = {}) {
+    const bgColor = options.bgColor || 'rgba(20, 83, 45, 0.94)';
+    const borderColor = options.borderColor || '#ffffff';
+    const textColor = options.textColor || '#ffffff';
+    const fontSize = options.fontSize || 28;
+    const scaleX = options.scaleX || 8.5;
+    const scaleY = options.scaleY || 2.1;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = bgColor;
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.roundRect(8, 14, 496, 100, 48);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = textColor;
+    ctx.font = `900 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 256, 65);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(scaleX, scaleY, 1);
+    sprite.renderOrder = 20;
+    return sprite;
+  }
+
+  init() {
+    if (!this.container) return;
+    const width = Math.max(320, this.container.clientWidth || 540);
+    const height = Math.max(360, this.container.clientHeight || 480);
+
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0xdbf0ff);
+    this.scene.fog = new THREE.FogExp2(0xdbf0ff, 0.0042);
+
+    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.5, 350);
+    this.camera.position.set(-22, 46, 38);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.08;
+
+    this.container.innerHTML = '';
+    this.container.appendChild(this.renderer.domElement);
+
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.07;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
+    this.controls.minDistance = 12;
+    this.controls.maxDistance = 135;
+    this.controls.target.set(0, 0, -4);
+
+    // Ánh sáng mặt trời ấm áp cho toàn khu Làng Vườn 25m x 80m
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8ab17d, 1.05);
+    hemiLight.position.set(0, 60, 0);
+    this.scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.55);
+    dirLight.position.set(35, 58, 28);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.left = -45;
+    dirLight.shadow.camera.right = 45;
+    dirLight.shadow.camera.top = 55;
+    dirLight.shadow.camera.bottom = -55;
+    dirLight.shadow.bias = -0.0005;
+    this.scene.add(dirLight);
+
+    this.dynamicGroup = new THREE.Group();
+    this.scene.add(this.dynamicGroup);
+
+    this.buildStaticVillageArchitecture();
+    this.bindInteraction();
+    this.animate();
+  }
+
+  buildStaticVillageArchitecture() {
+    const staticGroup = new THREE.Group();
+
+    // 1. Đế đảo đất sét bo tròn cho toàn khu 25m x 80m
+    const earthBase = new THREE.Mesh(
+      new THREE.BoxGeometry(28.5, 3.2, 85.5),
+      createClayMaterial(0x9c6644, { roughness: 0.85 })
+    );
+    earthBase.position.set(0, -1.8, 0);
+    earthBase.receiveShadow = true;
+    staticGroup.add(earthBase);
+
+    const turfTop = new THREE.Mesh(
+      new THREE.BoxGeometry(25.4, 0.5, 80.4),
+      createClayMaterial(0x74a15e, { roughness: 0.78 })
+    );
+    turfTop.position.set(0, -0.25, 0);
+    turfTop.receiveShadow = true;
+    staticGroup.add(turfTop);
+
+    // 2. Đường trục chính 1m phía Nam (Z = +41.8)
+    const mainRoad = new THREE.Mesh(
+      new THREE.BoxGeometry(32, 0.28, 3.2),
+      createClayMaterial(0x475569, { roughness: 0.85 })
+    );
+    mainRoad.position.set(0, -0.05, 42.0);
+    mainRoad.receiveShadow = true;
+    staticGroup.add(mainRoad);
+
+    for (let rx = -13; rx <= 13; rx += 3.2) {
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.04, 0.22),
+        createClayMaterial(0xf8fafc, { roughness: 0.5 })
+      );
+      stripe.position.set(rx, 0.11, 42.0);
+      staticGroup.add(stripe);
+    }
+
+    // 3. Hàng rào cây xanh bao quanh biên Tây (-12.5m), Đông (+12.5m) và Bắc (-40m)
+    const hedgeMat = createClayMaterial(0x2d5a27, { roughness: 0.82 });
+    const westHedge = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.35, 80.4), hedgeMat);
+    westHedge.position.set(-12.6, 0.65, 0);
+    westHedge.castShadow = true;
+    staticGroup.add(westHedge);
+
+    const eastHedge = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.35, 80.4), hedgeMat);
+    eastHedge.position.set(12.6, 0.65, 0);
+    eastHedge.castShadow = true;
+    staticGroup.add(eastHedge);
+
+    const northHedge = new THREE.Mesh(new THREE.BoxGeometry(25.8, 1.35, 0.65), hedgeMat);
+    northHedge.position.set(0, 0.65, -40.1);
+    northHedge.castShadow = true;
+    staticGroup.add(northHedge);
+
+    // Hàng rào gỗ thấp mặt tiền phía Nam (Cụm 1) + Cổng chào gỗ giàn hoa ở giữa
+    this.buildRusticFenceLine(staticGroup, -12.2, 39.9, -2.0, 39.9);
+    this.buildRusticFenceLine(staticGroup, 2.0, 39.9, 12.2, 39.9);
+    this.buildWoodenArchGate(staticGroup, 0, 39.6, 0);
+
+    // 4. Trục chính nội bộ (1,4 - 1,6m) uốn nhẹ hình chữ S từ z = +40 lên z = -33
+    const gravelMat = createClayMaterial(0xe3d5c5, { roughness: 0.88 });
+    const curbMat = createClayMaterial(0xb7a99a, { roughness: 0.85 });
+    const stepMat = createClayMaterial(0xf5ebe0, { roughness: 0.75 });
+
+    for (let z = -33.5; z <= 39.8; z += 0.65) {
+      const cx = this.getMainPathCenterX(z);
+      const nextX = this.getMainPathCenterX(z - 0.65);
+      const angle = Math.atan2(nextX - cx, -0.65);
+
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.1, 0.85), gravelMat);
+      seg.position.set(cx, 0.04, z);
+      seg.rotation.y = angle;
+      seg.receiveShadow = true;
+      staticGroup.add(seg);
+
+      // Viền đá cuội hai bên trục chính
+      const curbL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.82), curbMat);
+      curbL.position.set(cx - 0.86, 0.06, z);
+      curbL.rotation.y = angle;
+      staticGroup.add(curbL);
+
+      const curbR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.82), curbMat);
+      curbR.position.set(cx + 0.86, 0.06, z);
+      curbR.rotation.y = angle;
+      staticGroup.add(curbR);
+
+      if (Math.abs(Math.round(z * 2)) % 3 === 0) {
+        const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.12, 7), stepMat);
+        stone.position.set(cx + Math.sin(z) * 0.22, 0.055, z);
+        staticGroup.add(stone);
+      }
+
+      // Khóm hoa tự nhiên dọc hai bên đường uốn nhẹ
+      if (Math.abs(Math.round(z * 1.5)) % 4 === 0) {
+        this.buildFlowerShrub(staticGroup, cx - 1.25, z, (Math.abs(Math.round(z)) % 3));
+        this.buildFlowerShrub(staticGroup, cx + 1.25, z + 0.3, ((Math.abs(Math.round(z)) + 1) % 3));
+      }
+    }
+
+    // 5. Các nhánh vào vườn (0,8 - 1m, dài 4 - 8m) & Hàng rào phân cách giữa 4 Cụm
+    // Ranh giới Cụm 4 / Cụm 3 (z = -16), Cụm 3 / Cụm 2 (z = +4), Cụm 2 / Cụm 1 (z = +24)
+    const branchConfigs = [
+      { z: -24, dir: -1, len: 8.5, fence: true },
+      { z: -16, dir: -1, len: 10.5, fence: true }, // Ranh giới Cụm 4 - Cụm 3
+      { z: -16, dir: 1, len: 9.5, fence: true },
+      { z: -4, dir: -1, len: 9.0, fence: true },
+      { z: 4, dir: -1, len: 10.5, fence: true }, // Ranh giới Cụm 3 - Cụm 2
+      { z: 4, dir: 1, len: 9.5, fence: true },
+      { z: 14, dir: -1, len: 9.5, fence: true },
+      { z: 14, dir: 1, len: 9.0, fence: true },
+      { z: 24, dir: -1, len: 10.5, fence: true }, // Ranh giới Cụm 2 - Cụm 1
+      { z: 24, dir: 1, len: 9.5, fence: true },
+    ];
+
+    for (const br of branchConfigs) {
+      const startX = this.getMainPathCenterX(br.z) + br.dir * 0.85;
+      const endX = br.dir < 0 ? -11.8 : 11.8;
+      const branchLen = Math.abs(endX - startX);
+      const midX = (startX + endX) / 2;
+
+      const branchMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(branchLen, 0.08, 0.92),
+        gravelMat
+      );
+      branchMesh.position.set(midX, 0.035, br.z);
+      branchMesh.receiveShadow = true;
+      staticGroup.add(branchMesh);
+
+      if (br.fence) {
+        this.buildRusticFenceLine(staticGroup, startX, br.z - 0.55, endX, br.z - 0.55);
+      }
+    }
+
+    // 6. Nút mở rộng 1 (Giữa Cụm 2 & Cụm 3, z = +5.5): Cây hoa anh đào hồng lớn + ghế nghỉ
+    const node1X = this.getMainPathCenterX(5.5);
+    const node1Plaza = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.4, 0.1, 16), gravelMat);
+    node1Plaza.position.set(node1X + 0.6, 0.04, 5.5);
+    staticGroup.add(node1Plaza);
+    this.buildCherryBlossomTree(staticGroup, node1X + 1.4, 5.2, 1.35);
+    this.buildGardenBench(staticGroup, node1X - 1.1, 5.5, Math.PI / 2);
+
+    // 7. Nút mở rộng 2 (Giữa Cụm 3 & Cụm 4, z = -14.5): Giàn hoa gỗ Pergola + ghế nghỉ + cây lớn
+    const node2X = this.getMainPathCenterX(-14.5);
+    const node2Plaza = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.5, 0.1, 16), gravelMat);
+    node2Plaza.position.set(node2X, 0.04, -14.5);
+    staticGroup.add(node2Plaza);
+    this.buildWoodenArchGate(staticGroup, node2X, -14.5, 0.15);
+    this.buildGardenBench(staticGroup, node2X + 1.5, -14.5, -Math.PI / 2);
+    this.buildShadeTree(staticGroup, node2X - 2.0, -15.2, 1.25);
+
+    // 8. Điểm nhấn cuối khu (Cụm 4, z = -34.5, x = +4.8): Chòi nghỉ bát giác & Khu sinh hoạt chung
+    this.buildOctagonalGazeboPlaza(staticGroup, 4.6, -34.2);
+
+    // Sân trà tròn phụ bên trái Cụm 4
+    const subPlaza = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.5, 0.1, 16), stepMat);
+    subPlaza.position.set(-2.2, 0.05, -31.5);
+    staticGroup.add(subPlaza);
+    this.buildCherryBlossomTree(staticGroup, -1.8, -34.8, 1.1);
+
+    // 9. Ao sinh thái tại Cụm 4 Tây (Lô của GĐ Tuấn Kiệt - sát biên Bắc người chơi: x = -3.8, z = -20.5)
+    this.buildEcoPondLandmark(staticGroup, -4.0, -20.2);
+
+    // 10. Các Nhà kính (Glass Greenhouses) dọc cánh Đông Cụm 4, Cụm 3, Cụm 2, Cụm 1 như thiết kế
+    this.buildMiniGreenhouse(staticGroup, 8.2, -21.5);
+    this.buildMiniGreenhouse(staticGroup, 8.4, -5.5);
+    this.buildMiniGreenhouse(staticGroup, 8.2, 13.5);
+    this.buildMiniGreenhouse(staticGroup, 8.4, 28.5);
+
+    // Cây bóng mát dọc hai bên biên tạo cảm giác "Làng Vườn Nhỏ" mềm mại
+    const perimeterTrees = [
+      [-11.2, -36, 1.2],
+      [-11.0, -26, 1.35],
+      [-11.2, -13, 1.25],
+      [-11.0, 2, 1.15],
+      [-11.2, 16, 1.3],
+      [-11.0, 31, 1.1],
+      [11.2, -29, 1.3],
+      [11.0, -12, 1.2],
+      [11.2, 2, 1.15],
+      [11.0, 21, 1.25],
+      [11.2, 35, 1.1],
+    ];
+    for (const [tx, tz, ts] of perimeterTrees) {
+      this.buildShadeTree(staticGroup, tx, tz, ts);
+    }
+
+    // 11. Nhãn 3D hiển thị kích thước 25m x 80m và 4 Cụm (Cụm 1 -> Cụm 4) bên lề trái
+    const topDimSprite = this.createLabelSprite('◄─── RỘNG 25 m (TỔNG KHU 2.000 m²) ───►', {
+      bgColor: 'rgba(15, 23, 42, 0.88)',
+      scaleX: 14,
+      scaleY: 2.3,
+    });
+    topDimSprite.position.set(0, 2.2, -42.5);
+    staticGroup.add(topDimSprite);
+
+    const roadSprite = this.createLabelSprite('🛣️ ĐƯỜNG TRỤC CHÍNH 1 m • CỔNG VÀO LÀNG VƯỜN', {
+      bgColor: 'rgba(30, 41, 59, 0.92)',
+      scaleX: 14.5,
+      scaleY: 2.3,
+    });
+    roadSprite.position.set(0, 1.8, 44.2);
+    staticGroup.add(roadSprite);
+
+    const clusterMarkers = [
+      { z: -28, text: 'CỤM 4 (25m) • Ô lớn & Sinh hoạt chung', bg: 'rgba(21, 128, 61, 0.92)' },
+      { z: -6, text: 'CỤM 3 (20m) • Ô lớn 40–60m²', bg: 'rgba(2, 132, 199, 0.94)' },
+      { z: 14, text: 'CỤM 2 (20m) • Ô vừa 20–30m²', bg: 'rgba(21, 128, 61, 0.92)' },
+      { z: 32, text: 'CỤM 1 (15m) • Ô nhỏ 10–20m²', bg: 'rgba(21, 128, 61, 0.92)' },
+    ];
+    for (const cm of clusterMarkers) {
+      const sp = this.createLabelSprite(cm.text, {
+        bgColor: cm.bg,
+        scaleX: 11.5,
+        scaleY: 2.1,
+        fontSize: 25,
+      });
+      sp.position.set(-19.2, 2.0, cm.z);
+      staticGroup.add(sp);
+    }
+
+    this.scene.add(staticGroup);
+  }
+
+  buildRusticFenceLine(parent, x1, z1, x2, z2) {
+    const woodMat = createClayMaterial(0x9c6b3b, { roughness: 0.85 });
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.8) return;
+    const steps = Math.max(2, Math.floor(dist / 1.1));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const px = x1 + dx * t;
+      const pz = z1 + dz * t;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.9, 6), woodMat);
+      post.position.set(px, 0.45, pz);
+      post.castShadow = true;
+      parent.add(post);
+    }
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(dist, 0.08, 0.08), woodMat);
+    rail.position.set((x1 + x2) / 2, 0.65, (z1 + z2) / 2);
+    rail.rotation.y = Math.atan2( dz, dx );
+    parent.add(rail);
+
+    const railLow = new THREE.Mesh(new THREE.BoxGeometry(dist, 0.08, 0.08), woodMat);
+    railLow.position.set((x1 + x2) / 2, 0.32, (z1 + z2) / 2);
+    railLow.rotation.y = Math.atan2( dz, dx );
+    parent.add(railLow);
+  }
+
+  buildWoodenArchGate(parent, x, z, rotY = 0) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    group.rotation.y = rotY;
+    const woodMat = createClayMaterial(0x8d5524, { roughness: 0.8 });
+    const leafMat = createClayMaterial(0x386641, { roughness: 0.75 });
+    const flowerMat = createClayMaterial(0xff758f, { roughness: 0.65 });
+
+    const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 2.6, 8), woodMat);
+    leftPost.position.set(-1.15, 1.3, 0);
+    leftPost.castShadow = true;
+    group.add(leftPost);
+
+    const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 2.6, 8), woodMat);
+    rightPost.position.set(1.15, 1.3, 0);
+    rightPost.castShadow = true;
+    group.add(rightPost);
+
+    const topBeam = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.22, 0.45), woodMat);
+    topBeam.position.set(0, 2.55, 0);
+    topBeam.castShadow = true;
+    group.add(topBeam);
+
+    for (let lx = -1.2; lx <= 1.2; lx += 0.4) {
+      const rafter = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.95), woodMat);
+      rafter.position.set(lx, 2.7, 0);
+      group.add(rafter);
+    }
+
+    const vine = new THREE.Mesh(new THREE.DodecahedronGeometry(0.38, 1), leafMat);
+    vine.position.set(-0.9, 2.5, 0.2);
+    group.add(vine);
+    const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), flowerMat);
+    bloom.position.set(-0.75, 2.6, 0.35);
+    group.add(bloom);
+
+    parent.add(group);
+  }
+
+  buildOctagonalGazeboPlaza(parent, x, z) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    const patioMat = createClayMaterial(0xd6ccc2, { roughness: 0.82 });
+    const woodMat = createClayMaterial(0x9c6644, { roughness: 0.78 });
+    const roofMat = createClayMaterial(0x7f4f24, { roughness: 0.75 });
+
+    // Sân đá tròn Khu sinh hoạt chung
+    const patio = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.8, 0.16, 24), patioMat);
+    patio.position.y = 0.08;
+    patio.receiveShadow = true;
+    group.add(patio);
+
+    // 8 cột gỗ Chòi nghỉ bát giác
+    const radius = 2.6;
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 2.5, 8), woodMat);
+      col.position.set(Math.cos(ang) * radius, 1.3, Math.sin(ang) * radius);
+      col.castShadow = true;
+      group.add(col);
+    }
+
+    // Mái chòi gỗ bát giác 2 tầng
+    const lowerRoof = new THREE.Mesh(new THREE.ConeGeometry(3.5, 1.35, 8), roofMat);
+    lowerRoof.position.y = 3.05;
+    lowerRoof.castShadow = true;
+    group.add(lowerRoof);
+
+    const upperRoof = new THREE.Mesh(new THREE.ConeGeometry(1.6, 0.9, 8), roofMat);
+    upperRoof.position.y = 3.85;
+    upperRoof.castShadow = true;
+    group.add(upperRoof);
+
+    // Bàn trà / Bếp lửa trại sinh hoạt chung ở giữa chòi
+    const fireRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.85, 0.95, 0.38, 12),
+      createClayMaterial(0x64748b, { roughness: 0.85 })
+    );
+    fireRing.position.set(-1.2, 0.25, 2.8);
+    group.add(fireRing);
+
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.42, 0.65, 7),
+      createClayMaterial(0xf97316, { roughness: 0.4 })
+    );
+    flame.position.set(-1.2, 0.62, 2.8);
+    group.add(flame);
+
+    const label = this.createLabelSprite('🏛️ Chòi Nghỉ & Khu Sinh Hoạt Chung', {
+      bgColor: 'rgba(124, 45, 18, 0.92)',
+      scaleX: 9.5,
+      scaleY: 1.85,
+      fontSize: 24,
+    });
+    label.position.set(0, 5.1, 0);
+    group.add(label);
+
+    parent.add(group);
+  }
+
+  buildEcoPondLandmark(parent, x, z) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    const water = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.1, 1.9, 0.14, 18),
+      createClayMaterial(0x0ea5e9, { roughness: 0.22 })
+    );
+    water.position.y = 0.08;
+    group.add(water);
+
+    const stoneMat = createClayMaterial(0x94a3b8, { roughness: 0.85 });
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * Math.PI * 2;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.32, 0), stoneMat);
+      rock.position.set(Math.cos(ang) * 2.1, 0.16, Math.sin(ang) * 2.1);
+      group.add(rock);
+    }
+
+    const lilyMat = createClayMaterial(0x4ade80, { roughness: 0.65 });
+    for (const [lx, lz] of [[-0.6, -0.4], [0.7, 0.5], [-0.2, 0.8]]) {
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 10), lilyMat);
+      pad.position.set(lx, 0.16, lz);
+      group.add(pad);
+    }
+
+    parent.add(group);
+  }
+
+  buildMiniGreenhouse(parent, x, z) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.3, 3.2),
+      createClayMaterial(0x78350f, { roughness: 0.85 })
+    );
+    base.position.y = 0.15;
+    group.add(base);
+
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0.62,
+      roughness: 0.15,
+    });
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 3.0), glassMat);
+    walls.position.y = 1.0;
+    walls.castShadow = true;
+    group.add(walls);
+
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 0.95, 4), glassMat);
+    roof.position.y = 2.15;
+    roof.rotation.y = Math.PI / 4;
+    group.add(roof);
+
+    parent.add(group);
+  }
+
+  buildShadeTree(parent, x, z, scale = 1) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    group.scale.setScalar(scale);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.26, 1.4, 7),
+      createClayMaterial(0x7f4f24, { roughness: 0.85 })
+    );
+    trunk.position.y = 0.7;
+    trunk.castShadow = true;
+    group.add(trunk);
+
+    const foliageMat = createClayMaterial(0x3a7d44, { roughness: 0.75 });
+    const crown1 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.05, 1), foliageMat);
+    crown1.position.set(0, 1.85, 0);
+    crown1.castShadow = true;
+    group.add(crown1);
+
+    const crown2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.75, 1), foliageMat);
+    crown2.position.set(0.45, 2.25, 0.25);
+    group.add(crown2);
+
+    parent.add(group);
+  }
+
+  buildCherryBlossomTree(parent, x, z, scale = 1) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    group.scale.setScalar(scale);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.28, 1.5, 7),
+      createClayMaterial(0x6f4518, { roughness: 0.85 })
+    );
+    trunk.position.y = 0.75;
+    trunk.castShadow = true;
+    group.add(trunk);
+
+    const pinkMat = createClayMaterial(0xffb3c6, { roughness: 0.68 });
+    const c1 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.15, 1), pinkMat);
+    c1.position.set(0, 2.0, 0);
+    c1.castShadow = true;
+    group.add(c1);
+
+    const c2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85, 1), pinkMat);
+    c2.position.set(-0.5, 2.3, 0.3);
+    group.add(c2);
+
+    parent.add(group);
+  }
+
+  buildGardenBench(parent, x, z, rotY = 0) {
+    const bench = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.35, 0.45),
+      createClayMaterial(0xb07d4f, { roughness: 0.8 })
+    );
+    bench.position.set(x, 0.22, z);
+    bench.rotation.y = rotY;
+    bench.castShadow = true;
+    parent.add(bench);
+  }
+
+  buildFlowerShrub(parent, x, z, colorIdx = 0) {
+    const colors = [0xf472b6, 0xfacc15, 0xc084fc];
+    const bush = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.26, 0),
+      createClayMaterial(0x4d908e, { roughness: 0.8 })
+    );
+    bush.position.set(x, 0.18, z);
+    parent.add(bush);
+
+    const flower = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 6, 6),
+      createClayMaterial(colors[colorIdx % colors.length], { roughness: 0.6 })
+    );
+    flower.position.set(x, 0.36, z);
+    parent.add(flower);
+  }
+
+  setCameraPreset(presetName, state = null) {
+    const currentState = state || this.lastStateRef;
+    let userCenterX = -2.5;
+    let userCenterZ = -10.0;
+    if (currentState && currentState.masterMap && currentState.masterMap.userCells.length > 0) {
+      let sumX = 0;
+      let sumZ = 0;
+      for (const c of currentState.masterMap.userCells) {
+        const w = this.cellToWorld(c.col, c.row);
+        sumX += w.x;
+        sumZ += w.z;
+      }
+      userCenterX = sumX / currentState.masterMap.userCells.length;
+      userCenterZ = sumZ / currentState.masterMap.userCells.length;
+    }
+
+    if (presetName === 'focus_user') {
+      this.cameraTargetGoal = new THREE.Vector3(userCenterX, 0.5, userCenterZ);
+      this.cameraPosGoal = new THREE.Vector3(userCenterX - 14, 24, userCenterZ + 22);
+    } else if (presetName === 'top_down') {
+      this.cameraTargetGoal = new THREE.Vector3(0, 0, 0);
+      this.cameraPosGoal = new THREE.Vector3(0, 92, 6);
+    } else if (presetName === 'walk_path') {
+      this.cameraTargetGoal = new THREE.Vector3(2.0, 1.5, -24);
+      this.cameraPosGoal = new THREE.Vector3(-3.5, 11.5, 22);
+    } else {
+      // Toàn cảnh 25m x 80m
+      this.cameraTargetGoal = new THREE.Vector3(0, 0, -2);
+      this.cameraPosGoal = new THREE.Vector3(-28, 52, 46);
+    }
+  }
+
+  updateState(state, selectedDirection, selectedRentM2, previewCells = []) {
+    if (!this.dynamicGroup || !state || !state.masterMap) return;
+    this.lastStateRef = state;
+
+    while (this.dynamicGroup.children.length > 0) {
+      this.dynamicGroup.remove(this.dynamicGroup.children[0]);
+    }
+    this.interactiveTargets = [];
+    this.animatedPins = [];
+    this.previewMeshes = [];
+
+    const map = state.masterMap;
+    const userSet = new Set((map.userCells || []).map((u) => `${u.col},${u.row}`));
+    const occMap = new Map((map.occupiedCells || []).map((o) => [`${o.col},${o.row}`, o.owner]));
+    const previewSet = new Set((previewCells || []).map((p) => `${p.col},${p.row}`));
+
+    const userSoilMat = createClayMaterial(0x5c3d28, { roughness: 0.85 });
+    const userFrameMat = createClayMaterial(0x22c55e, { roughness: 0.4 });
+    const previewMat = createClayMaterial(0x38bdf8, { roughness: 0.35 });
+    const neighborSoilMat = createClayMaterial(0x7f5539, { roughness: 0.88 });
+    const neighborBorderMat = createClayMaterial(0xf97316, { roughness: 0.55 });
+    const freeLawnMat = createClayMaterial(0x84a96c, { roughness: 0.85 });
+    const cropLeafMat = createClayMaterial(0x4ade80, { roughness: 0.65 });
+
+    let userSumX = 0;
+    let userSumZ = 0;
+    let userCount = 0;
+
+    let previewSumX = 0;
+    let previewSumZ = 0;
+    let previewCount = 0;
+
+    // Nhóm tọa độ các hộ hàng xóm để gắn 1 biển tên 3D cho mỗi hộ
+    const neighborCenters = new Map();
+
+    for (let r = 0; r < map.rows; r++) {
+      for (let c = 0; c < map.cols; c++) {
+        const key = `${c},${r}`;
+        const { x, z, w, d } = this.cellToWorld(c, r);
+        const pathX = this.getMainPathCenterX(z);
+        // Tránh đè trực tiếp lên tim đường trục chính uốn nhẹ (chừa hành lang đường)
+        const distToPath = Math.abs(x - pathX);
+        const isUser = userSet.has(key);
+        const isPreview = previewSet.has(key);
+        const neighborOwner = occMap.get(key);
+
+        if (isUser) {
+          userSumX += x;
+          userSumZ += z;
+          userCount++;
+
+          // Nền đất nâu phù sa của người chơi + khung viền xanh ngọc nổi bật
+          const frame = new THREE.Mesh(new THREE.BoxGeometry(w - 0.12, 0.24, d - 0.16), userFrameMat);
+          frame.position.set(x, 0.12, z);
+          frame.receiveShadow = true;
+          this.dynamicGroup.add(frame);
+
+          const soil = new THREE.Mesh(new THREE.BoxGeometry(w - 0.36, 0.3, d - 0.4), userSoilMat);
+          soil.position.set(x, 0.18, z);
+          soil.receiveShadow = true;
+          soil.userData = { col: c, row: r, type: 'user' };
+          this.dynamicGroup.add(soil);
+          this.interactiveTargets.push(soil);
+
+          // Mô hình cây trồng / vật nuôi thu nhỏ trên mảnh đất của người chơi
+          for (const dz of [-0.9, 0.9]) {
+            const sprout = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 8), cropLeafMat);
+            sprout.position.set(x, 0.48, z + dz);
+            sprout.castShadow = true;
+            this.dynamicGroup.add(sprout);
+          }
+        } else if (isPreview) {
+          previewSumX += x;
+          previewSumZ += z;
+          previewCount++;
+
+          const prevMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(w - 0.18, 0.34, d - 0.22),
+            previewMat
+          );
+          prevMesh.position.set(x, 0.2, z);
+          prevMesh.userData = { col: c, row: r, type: 'preview' };
+          this.dynamicGroup.add(prevMesh);
+          this.interactiveTargets.push(prevMesh);
+          this.previewMeshes.push(prevMesh);
+        } else if (neighborOwner) {
+          if (!neighborCenters.has(neighborOwner)) {
+            neighborCenters.set(neighborOwner, { sumX: 0, sumZ: 0, count: 0 });
+          }
+          const nc = neighborCenters.get(neighborOwner);
+          nc.sumX += x;
+          nc.sumZ += z;
+          nc.count++;
+
+          // Tránh vẽ luống đất đè lên Chòi nghỉ & Ao sinh thái ở Cụm 4
+          const isGazeboOrPond =
+            neighborOwner.includes('Chòi Nghỉ') ||
+            (neighborOwner.includes('Tuấn Kiệt') && c >= 2 && c <= 3);
+          if (!isGazeboOrPond && distToPath > 1.1) {
+            const nFrame = new THREE.Mesh(
+              new THREE.BoxGeometry(w - 0.22, 0.16, d - 0.26),
+              neighborBorderMat
+            );
+            nFrame.position.set(x, 0.08, z);
+            this.dynamicGroup.add(nFrame);
+
+            const nBed = new THREE.Mesh(
+              new THREE.BoxGeometry(w - 0.42, 0.22, d - 0.46),
+              neighborSoilMat
+            );
+            nBed.position.set(x, 0.12, z);
+            nBed.userData = { col: c, row: r, type: 'neighbor', owner: neighborOwner };
+            this.dynamicGroup.add(nBed);
+            this.interactiveTargets.push(nBed);
+          }
+        } else if (distToPath > 1.25) {
+          // Ô đất trống có thể mở rộng
+          const freePlot = new THREE.Mesh(
+            new THREE.BoxGeometry(w - 0.32, 0.09, d - 0.38),
+            freeLawnMat
+          );
+          freePlot.position.set(x, 0.045, z);
+          freePlot.userData = { col: c, row: r, type: 'free' };
+          this.dynamicGroup.add(freePlot);
+          this.interactiveTargets.push(freePlot);
+        }
+      }
+    }
+
+    // Ghim 3D nổi bật trên mảnh đất của người chơi ("🏡 VƯỜN CỦA BẠN")
+    if (userCount > 0) {
+      const ux = userSumX / userCount;
+      const uz = userSumZ / userCount;
+
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, 4.2, 8),
+        createClayMaterial(0xffffff, { roughness: 0.3 })
+      );
+      pole.position.set(ux, 2.2, uz);
+      this.dynamicGroup.add(pole);
+
+      const userPin = this.createLabelSprite(
+        `🏡 VƯỜN CỦA BẠN (${state.rentedAreaM2}m² • Cụm 3)`,
+        {
+          bgColor: 'rgba(22, 163, 74, 0.96)',
+          borderColor: '#ffffff',
+          scaleX: 11.5,
+          scaleY: 2.35,
+          fontSize: 27,
+        }
+      );
+      userPin.position.set(ux, 4.8, uz);
+      userPin.userData = { baseY: 4.8 };
+      this.dynamicGroup.add(userPin);
+      this.animatedPins.push(userPin);
+    }
+
+    // Ghim 3D cho vùng Sẽ Mở Rộng
+    if (previewCount > 0) {
+      const px = previewSumX / previewCount;
+      const pz = previewSumZ / previewCount;
+      const dirLabels = {
+        north: '⬆️ Hướng Bắc',
+        east: '➡️ Hướng Đông',
+        south: '⬇️ Hướng Nam',
+        west: '⬅️ Hướng Tây',
+      };
+      const prevPin = this.createLabelSprite(
+        `➕ SẼ MỞ RỘNG +${selectedRentM2}m² (${dirLabels[selectedDirection] || ''})`,
+        {
+          bgColor: 'rgba(2, 132, 199, 0.95)',
+          borderColor: '#e0f2fe',
+          scaleX: 11.2,
+          scaleY: 2.15,
+          fontSize: 25,
+        }
+      );
+      prevPin.position.set(px, 3.3, pz);
+      prevPin.userData = { baseY: 3.3 };
+      this.dynamicGroup.add(prevPin);
+      this.animatedPins.push(prevPin);
+    }
+
+    // Biển tên 3D cho các hộ hàng xóm xung quanh (đặc biệt là GĐ Tuấn Kiệt chặn biên Bắc & GĐ Minh Anh biên Tây)
+    for (const [ownerName, info] of neighborCenters.entries()) {
+      if (ownerName.includes('Chòi Nghỉ') || info.count === 0) continue;
+      const nx = info.sumX / info.count;
+      const nz = info.sumZ / info.count;
+      const shortOwner = ownerName.split('(')[0].trim();
+      const isNorthBlocker = ownerName.includes('Tuấn Kiệt');
+      const badgeText = isNorthBlocker
+        ? `⛔ ${shortOwner} (Đã xây sát biên Bắc)`
+        : `🚧 ${shortOwner}`;
+      const nPin = this.createLabelSprite(badgeText, {
+        bgColor: isNorthBlocker ? 'rgba(190, 18, 60, 0.92)' : 'rgba(234, 88, 12, 0.9)',
+        scaleX: isNorthBlocker ? 10.2 : 7.6,
+        scaleY: 1.75,
+        fontSize: 23,
+      });
+      nPin.position.set(nx, 2.5, nz);
+      this.dynamicGroup.add(nPin);
+    }
+  }
+
+  bindInteraction() {
+    if (!this.renderer) return;
+    const dom = this.renderer.domElement;
+    let downX = 0;
+    let downY = 0;
+
+    dom.addEventListener('pointerdown', (e) => {
+      downX = e.clientX;
+      downY = e.clientY;
+    });
+
+    dom.addEventListener('pointerup', (e) => {
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 12) return;
+      if (!this.lastStateRef || !this.onDirectionSelect) return;
+
+      const rect = dom.getBoundingClientRect();
+      this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const hits = this.raycaster.intersectObjects(this.interactiveTargets, false);
+      if (hits.length === 0) return;
+
+      const { col, row } = hits[0].object.userData || {};
+      if (typeof col !== 'number' || typeof row !== 'number') return;
+
+      const userCells = this.lastStateRef.masterMap.userCells || [];
+      if (userCells.length === 0) return;
+      const minCol = Math.min(...userCells.map((u) => u.col));
+      const maxCol = Math.max(...userCells.map((u) => u.col));
+      const minRow = Math.min(...userCells.map((u) => u.row));
+      const maxRow = Math.max(...userCells.map((u) => u.row));
+
+      if (row < minRow) {
+        this.onDirectionSelect('north');
+      } else if (row > maxRow) {
+        this.onDirectionSelect('south');
+      } else if (col < minCol) {
+        this.onDirectionSelect('west');
+      } else if (col > maxCol) {
+        this.onDirectionSelect('east');
+      }
+    });
+
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  resize() {
+    if (!this.container || !this.renderer || !this.camera) return;
+    const width = Math.max(300, this.container.clientWidth);
+    const height = Math.max(320, this.container.clientHeight);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+  }
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    if (!this.renderer || !this.scene || !this.camera) return;
+
+    const t = this.clock.getElapsedTime();
+    for (const pin of this.animatedPins) {
+      if (pin.userData && typeof pin.userData.baseY === 'number') {
+        pin.position.y = pin.userData.baseY + Math.sin(t * 2.8) * 0.28;
+      }
+    }
+    for (const mesh of this.previewMeshes) {
+      mesh.position.y = 0.2 + Math.sin(t * 4.0) * 0.06;
+    }
+
+    if (this.cameraTargetGoal && this.controls) {
+      this.controls.target.lerp(this.cameraTargetGoal, 0.12);
+      if (this.controls.target.distanceTo(this.cameraTargetGoal) < 0.08) {
+        this.cameraTargetGoal = null;
+      }
+    }
+    if (this.cameraPosGoal) {
+      this.camera.position.lerp(this.cameraPosGoal, 0.1);
+      if (this.camera.position.distanceTo(this.cameraPosGoal) < 0.15) {
+        this.cameraPosGoal = null;
+      }
+    }
+
     if (this.controls) this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
