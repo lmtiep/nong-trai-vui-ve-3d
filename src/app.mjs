@@ -13,6 +13,12 @@ import {
   getGrowthStageInfo,
   hasFishPond,
   isBuildingItem,
+  ensureMasterMap,
+  getUserMapBounds,
+  getExpansionCapabilities,
+  getPreviewExpansionCells,
+  MASTER_MAP_COLS,
+  MASTER_MAP_ROWS,
   MIN_POND_LAND_AREA_M2,
   ITEM_CATALOG,
   SHOP_CATEGORIES,
@@ -21,7 +27,7 @@ import {
 } from './farmEngine.mjs?v=20261026_03';
 import { CuteIslandScene, ShopPreview3D, computeGridDimensions } from './scene3d.mjs?v=20261026_03';
 
-const STORAGE_KEY = 'nong_trai_vui_ve_state_v2';
+const STORAGE_KEY = 'nong_trai_vui_ve_state_v3';
 
 function loadOrCreateState() {
   try {
@@ -29,6 +35,7 @@ function loadOrCreateState() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.walletBalance === 'number' && parsed.rentedAreaM2 >= 10) {
+        ensureMasterMap(parsed);
         return parsed;
       }
     }
@@ -61,6 +68,7 @@ let selectedShopCategory = 'crop';
 let selectedShopItemId = 'cabbage';
 let selectedPreviewStage = 1;
 let lastSlideDir = 0;
+let selectedExpansionDirection = 'east';
 let island3D = null;
 let shopPreview3D = null;
 
@@ -242,9 +250,163 @@ function renderRealFarmPhotoCanvas(canvas, report) {
   );
 }
 
+function renderMasterMapUI() {
+  ensureMasterMap(state);
+  const capabilities = getExpansionCapabilities(state);
+  const bounds = getUserMapBounds(state);
+
+  // If currently selected direction is blocked, auto-pick first available direction if possible
+  if (
+    capabilities[selectedExpansionDirection] &&
+    !capabilities[selectedExpansionDirection].canExpand
+  ) {
+    const firstOpen = ['east', 'south', 'west', 'north'].find(
+      (d) => capabilities[d] && capabilities[d].canExpand
+    );
+    if (firstOpen) {
+      selectedExpansionDirection = firstOpen;
+    }
+  }
+
+  const activeDirInfo = capabilities[selectedExpansionDirection] || capabilities.east;
+  const slider = document.getElementById('rent-area-slider');
+  const maxByHouseholdCap = Math.max(0, MAX_USER_AREA_M2 - state.rentedAreaM2);
+  const maxInDirection = activeDirInfo
+    ? Math.min(maxByHouseholdCap, activeDirInfo.maxExpandM2)
+    : maxByHouseholdCap;
+
+  if (slider) {
+    slider.max = String(Math.max(10, maxInDirection));
+    if (Number(slider.value) > maxInDirection && maxInDirection >= 10) {
+      slider.value = String(maxInDirection);
+    }
+  }
+
+  const selectedRentM2 = slider ? Number(slider.value) : 20;
+  const rentCost = (selectedRentM2 / 10) * PRICE_PER_10M2;
+
+  const coordBadge = document.getElementById('user-map-coord-badge');
+  if (coordBadge) {
+    const colRange = `C${bounds.minCol + 1}–C${bounds.maxCol + 1}`;
+    const rowRange = `R${bounds.minRow + 1}–R${bounds.maxRow + 1}`;
+    coordBadge.textContent = `📍 Lô của bạn: Cột ${colRange} • Hàng ${rowRange} (${state.rentedAreaM2}m²)`;
+  }
+
+  // Render 4 directional buttons
+  const dirGrid = document.getElementById('expansion-direction-grid');
+  if (dirGrid) {
+    const dirOrder = ['north', 'east', 'south', 'west'];
+    dirGrid.innerHTML = dirOrder
+      .map((dirKey) => {
+        const info = capabilities[dirKey];
+        if (!info) return '';
+        const isSelected = selectedExpansionDirection === dirKey;
+        const isBlocked = !info.canExpand;
+        return `
+          <button
+            type="button"
+            class="dir-card ${isSelected ? 'active' : ''} ${isBlocked ? 'blocked' : ''}"
+            data-expand-dir="${dirKey}"
+          >
+            <div class="dir-card-top">
+              <span class="dir-card-title">${escapeHtml(info.label)}</span>
+              <span class="dir-card-badge ${isBlocked ? 'badge-blocked' : 'badge-open'}">
+                ${isBlocked ? '⛔ Kịch biên' : `Tối đa +${info.maxExpandM2}m²`}
+              </span>
+            </div>
+            <div class="dir-card-desc">${escapeHtml(info.statusText)}</div>
+          </button>
+        `;
+      })
+      .join('');
+
+    dirGrid.querySelectorAll('[data-expand-dir]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const dirKey = btn.getAttribute('data-expand-dir');
+        const info = capabilities[dirKey];
+        if (!info) return;
+        if (!info.canExpand) {
+          showToast(`⛔ ${info.label}: ${info.statusText}`, 'error');
+          return;
+        }
+        selectedExpansionDirection = dirKey;
+        renderMasterMapUI();
+      });
+    });
+  }
+
+  // Render 20x10 Master Map Grid (200 cells x 10m2 = 2,000m2)
+  const mapGrid = document.getElementById('master-map-grid');
+  if (mapGrid) {
+    const previewCells =
+      activeDirInfo && activeDirInfo.canExpand
+        ? getPreviewExpansionCells(state, selectedExpansionDirection, selectedRentM2)
+        : [];
+    const previewSet = new Set(previewCells.map((c) => `${c.col},${c.row}`));
+
+    const userSet = new Set(
+      (state.masterMap.userCells || []).map((u) => `${u.col},${u.row}`)
+    );
+    const neighborMap = new Map(
+      (state.masterMap.occupiedCells || []).map((o) => [`${o.col},${o.row}`, o.owner])
+    );
+
+    const cellsHtml = [];
+    for (let r = 0; r < MASTER_MAP_ROWS; r++) {
+      for (let c = 0; c < MASTER_MAP_COLS; c++) {
+        const key = `${c},${r}`;
+        const isUser = userSet.has(key);
+        const neighborOwner = neighborMap.get(key);
+        const isPreview = previewSet.has(key);
+        let cls = 'map-cell-free';
+        let label = '';
+        let tooltip = `Lô (C${c + 1}, R${r + 1}) • 10m²: Đất trống`;
+
+        if (isUser) {
+          cls = 'map-cell-user';
+          label = '🏡';
+          tooltip = `Lô của bạn (C${c + 1}, R${r + 1}) • 10m²`;
+        } else if (neighborOwner) {
+          cls = 'map-cell-neighbor';
+          label = '🚧';
+          tooltip = `Đã có chủ: ${neighborOwner} (C${c + 1}, R${r + 1}) • Không thể mở rộng đè lên`;
+        } else if (isPreview) {
+          cls = 'map-cell-preview';
+          label = '➕';
+          tooltip = `Dự kiến mở rộng (${activeDirInfo.label}) • Lô (C${c + 1}, R${r + 1}) • 10m²`;
+        }
+
+        cellsHtml.push(
+          `<div class="map-cell ${cls}" title="${escapeHtml(tooltip)}"><span>${label}</span></div>`
+        );
+      }
+    }
+    mapGrid.innerHTML = cellsHtml.join('');
+  }
+
+  const previewEl = document.getElementById('rent-area-preview');
+  const rentBtn = document.getElementById('btn-rent-land');
+  if (previewEl) {
+    if (!activeDirInfo || !activeDirInfo.canExpand) {
+      previewEl.textContent = `⛔ ${activeDirInfo ? activeDirInfo.statusText : 'Không thể mở rộng hướng này'}`;
+    } else {
+      previewEl.textContent = `+${selectedRentM2}m² về ${activeDirInfo.label} (Mở rộng thêm ${selectedRentM2} ô 1x1m) = ${formatVnd(rentCost)}`;
+    }
+  }
+  if (rentBtn) {
+    if (!activeDirInfo || !activeDirInfo.canExpand || maxInDirection < 10) {
+      rentBtn.disabled = true;
+      rentBtn.textContent = '⛔ Hướng này đã kịch biên';
+    } else {
+      rentBtn.disabled = false;
+      rentBtn.textContent = `Xác nhận mở rộng +${selectedRentM2}m² (${activeDirInfo.label} • ${formatVnd(rentCost)})`;
+    }
+  }
+}
+
 function updateUI() {
   saveState(state);
-  const { cols } = computeGridDimensions(state.rentedAreaM2);
+  const { cols } = computeGridDimensions(state.rentedAreaM2, state);
   const col = (selectedPlotIndex % cols) + 1;
   const row = Math.floor(selectedPlotIndex / cols) + 1;
 
@@ -293,17 +455,8 @@ function updateUI() {
     }
   }
 
-  // Rent Modal preview
-  const slider = document.getElementById('rent-area-slider');
-  const maxCanRent = Math.max(0, MAX_USER_AREA_M2 - state.rentedAreaM2);
-  slider.max = String(Math.max(10, maxCanRent));
-  if (Number(slider.value) > maxCanRent && maxCanRent >= 10) {
-    slider.value = String(maxCanRent);
-  }
-  const selectedRentM2 = Number(slider.value);
-  const rentCost = (selectedRentM2 / 10) * PRICE_PER_10M2;
-  document.getElementById('rent-area-preview').textContent =
-    `+${selectedRentM2}m² (Mở rộng thêm ${selectedRentM2} ô 1x1m) = ${formatVnd(rentCost)}`;
+  // Rent Modal & 2,000m² Master Map preview
+  renderMasterMapUI();
 
   const totalUsedM2 = state.otherFamiliesRentedM2 + state.rentedAreaM2;
   document.getElementById('pool-summary-text').textContent =
@@ -636,16 +789,13 @@ function initEventListeners() {
 
   const slider = document.getElementById('rent-area-slider');
   slider.addEventListener('input', () => {
-    const selectedRentM2 = Number(slider.value);
-    const rentCost = (selectedRentM2 / 10) * PRICE_PER_10M2;
-    document.getElementById('rent-area-preview').textContent =
-      `+${selectedRentM2}m² (Mở rộng thêm ${selectedRentM2} ô 1x1m) = ${formatVnd(rentCost)}`;
+    renderMasterMapUI();
   });
 
   document.querySelectorAll('[data-rent-preset]').forEach((chip) => {
     chip.addEventListener('click', () => {
       slider.value = chip.getAttribute('data-rent-preset');
-      slider.dispatchEvent(new Event('input'));
+      renderMasterMapUI();
     });
   });
 
@@ -671,16 +821,22 @@ function initEventListeners() {
 
   document.getElementById('btn-rent-land').addEventListener('click', () => {
     const areaToRent = Number(slider.value);
-    const res = rentLandArea(state, areaToRent);
+    const res = rentLandArea(state, areaToRent, selectedExpansionDirection);
     if (!res.ok) {
       showToast(res.error, 'error');
       return;
     }
+    const dirLabelMap = {
+      north: 'Hướng Bắc ⬆️',
+      east: 'Hướng Đông ➡️',
+      south: 'Hướng Nam ⬇️',
+      west: 'Hướng Tây ⬅️',
+    };
     closeAllModals();
     showWalletDelta(-res.cost);
     updateUI();
     showToast(
-      `🏝️ Đã thuê thêm +${areaToRent}m² (-${formatVnd(res.cost)}) • Quỹ còn: ${formatVnd(state.walletBalance)}`,
+      `🏝️ Đã mở rộng +${areaToRent}m² về ${dirLabelMap[res.direction] || 'hướng đã chọn'} (-${formatVnd(res.cost)}) • Quỹ còn: ${formatVnd(state.walletBalance)}`,
       'success'
     );
   });

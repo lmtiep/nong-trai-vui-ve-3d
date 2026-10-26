@@ -2,7 +2,10 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Nông Trại Vui Vẻ 3D • Đảo Riêng Ven Hà Nội</title>
     <link rel="stylesheet" href="./styles.css?v=20261026_03" />
     <script type="importmap">
@@ -22,15 +25,15 @@
 
     <!-- Minimal Floating Top HUD -->
     <header class="hud-top">
-      <!-- Top-Left: Level & Island Size -->
+      <!-- Top-Left: Level & Island Size / Master Map 2.000m2 -->
       <div class="hud-group">
-        <button type="button" id="btn-hud-info" class="hud-pill" title="Xem thông tin Khu đất mẫu 2.000m²">
+        <button type="button" id="btn-hud-info" class="hud-pill" title="Mở Bản Đồ Tổng 2.000m² & Mở Rộng Đất">
           <span class="pill-badge" id="level-badge">Lv.1</span>
           <div class="mini-exp-track">
             <div id="exp-bar-fill" class="mini-exp-fill" style="width: 60%"></div>
           </div>
           <span class="hud-divider">|</span>
-          <span>🏝️ <strong id="rented-area">40m²</strong><small>/500m²</small></span>
+          <span>🗺️ <strong id="rented-area">40m²</strong><small>/2.000m²</small></span>
         </button>
       </div>
 
@@ -96,8 +99,8 @@
         <span class="dock-label">Cửa Hàng</span>
       </button>
       <button type="button" class="dock-btn" data-open-modal="rent-modal">
-        <span class="dock-icon">🧱</span>
-        <span class="dock-label">Thuê Đất</span>
+        <span class="dock-icon">🗺️</span>
+        <span class="dock-label">Map & Thuê Đất</span>
       </button>
       <button type="button" id="btn-dock-live" class="dock-btn dock-btn-highlight">
         <span class="dock-icon">📸</span>
@@ -166,11 +169,11 @@
       </div>
     </div>
 
-    <!-- MODAL 2: Rent Land & Farmer Mastery / Garden Management -->
+    <!-- MODAL 2: Master Map 2.000m2 & Directional Land Expansion -->
     <div id="rent-modal" class="modal-backdrop hidden">
-      <div class="modal-box">
+      <div class="modal-box modal-map-wide">
         <div class="modal-header">
-          <h3>🧱 Khu Đất & Kinh Nghiệm Điền Chủ</h3>
+          <h3>🗺️ Map Tổng 2.000m² & Mở Rộng Đất</h3>
           <div class="modal-header-actions">
             <button type="button" class="modal-wallet-chip" data-open-modal="topup-modal" title="Bấm để nạp thêm tiền">
               💰 Quỹ: <strong data-live-wallet>7.200.000đ</strong> <span class="chip-plus">＋</span>
@@ -179,6 +182,40 @@
           </div>
         </div>
         <div class="modal-body">
+          <!-- Bản Đồ Tổng 2.000m² (20 cột x 10 hàng = 200 lô 10m²) -->
+          <div class="master-map-container">
+            <div class="master-map-top-bar">
+              <div class="master-map-title">
+                📍 <strong>Quy hoạch tổng khu 2.000m² Riverside Long Biên</strong>
+                <span id="user-map-coord-badge" class="ctx-badge">Vị trí của bạn: Khu C6-D7</span>
+              </div>
+              <div class="master-map-legend">
+                <span class="legend-item"><i class="legend-dot dot-user"></i> Đất của bạn</span>
+                <span class="legend-item"><i class="legend-dot dot-preview"></i> Sẽ mở rộng</span>
+                <span class="legend-item"><i class="legend-dot dot-neighbor"></i> Hộ khác đã xây</span>
+                <span class="legend-item"><i class="legend-dot dot-free"></i> Đất trống</span>
+              </div>
+            </div>
+
+            <div class="master-map-compass-frame">
+              <div class="compass-edge compass-north">⬆️ Phía Bắc (Giáp khu dân cư & GĐ Tuấn Kiệt)</div>
+              <div class="compass-middle-row">
+                <div class="compass-edge compass-west">⬅️ Tây</div>
+                <div id="master-map-grid" class="master-map-grid" title="Mỗi ô = 10m² (Tổng 20x10 = 2.000m²)"></div>
+                <div class="compass-edge compass-east">➡️ Đông (Sông Hồng)</div>
+              </div>
+              <div class="compass-edge compass-south">⬇️ Phía Nam (Đường lớn nội khu Long Biên)</div>
+            </div>
+          </div>
+
+          <!-- Chọn hướng mở rộng (Bắc / Đông / Nam / Tây) -->
+          <div class="expansion-direction-section">
+            <div class="expansion-section-label">
+              🧭 <strong>Chọn hướng mở rộng đất</strong> <small>(Hướng sát cạnh đã có người xây sẽ bị khóa)</small>
+            </div>
+            <div id="expansion-direction-grid" class="expansion-direction-grid"></div>
+          </div>
+
           <div class="compact-stat-row">
             <span>Đơn giá thuê: <strong>200.000đ / 10m²</strong></span>
             <span>Tối đa: <strong>500m² / hộ</strong></span>
@@ -204,7 +241,7 @@
           </div>
 
           <button type="button" id="btn-rent-land" class="btn-primary-full">
-            ➕ Xác Nhận Thuê Thêm Đất
+            ➕ Xác Nhận Mở Rộng Đất Theo Hướng Đã Chọn
           </button>
 
           <!-- Hồ Sơ Kinh Nghiệm Nuôi Trồng & Quản Lý Hộ Khu Vườn Khác -->

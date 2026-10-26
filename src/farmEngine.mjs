@@ -2,6 +2,8 @@ export const LAND_UNIT_M2 = 10;
 export const PRICE_PER_10M2 = 200_000;
 export const MAX_USER_AREA_M2 = 500;
 export const TOTAL_DEMO_FARM_M2 = 2_000;
+export const MASTER_MAP_COLS = 20;
+export const MASTER_MAP_ROWS = 10; // 20 cột x 10 hàng = 200 lô x 10m² = 2.000m²
 export const MIN_POND_LAND_AREA_M2 = 300;
 export const MANAGEMENT_FEE_PER_10M2 = 15_000;
 export const MAX_MANAGED_BY_LEVEL = {
@@ -568,6 +570,276 @@ export function addExp(state, amount) {
   return leveledUp;
 }
 
+export function createDefaultMasterMap() {
+  // Quy hoạch khu đất 2.000m² (20 cột x 10 hàng, mỗi ô trên bản đồ tổng = 10m²):
+  // Đã có 5 hộ gia đình khác thuê 42 ô (= 420m²), trong đó:
+  // - GĐ Tuấn Kiệt (Times City) đã xây sát cạnh phía Bắc (row 1..2, col 5..7) của vị trí khởi điểm người chơi (row 3..4, col 5..6) -> chặn hướng Bắc!
+  // - GĐ Minh Anh (Royal City) ở phía Tây (row 2..5, col 1..2) -> hướng Tây chỉ còn mở rộng được tối đa +40m² (col 3..4) là chạm đất GĐ Minh Anh!
+  // - Hướng Đông (về phía sông Hồng) và Hướng Nam (về phía đường lớn) còn rộng rãi để mở rộng.
+  const neighborZones = [
+    { owner: 'GĐ Tuấn Kiệt (Times City)', c1: 5, c2: 7, r1: 1, r2: 2 }, // 3x2 = 6 lô (60m²) sát biên Bắc
+    { owner: 'GĐ Minh Anh (Royal City)', c1: 1, c2: 2, r1: 2, r2: 5 }, // 2x4 = 8 lô (80m²) cách biên Tây 2 cột
+    { owner: 'GĐ Hùng Cường (Symphony)', c1: 0, c2: 4, r1: 0, r2: 1 }, // 5x2 = 10 lô (100m²) góc Tây Bắc
+    { owner: 'GĐ Hải Yến (Ciputra)', c1: 15, c2: 19, r1: 0, r2: 1 }, // 5x2 = 10 lô (100m²) góc Đông Bắc
+    { owner: 'GĐ Quốc Khánh (Ecopark)', c1: 0, c2: 3, r1: 8, r2: 9 }, // 4x2 = 8 lô (80m²) góc Tây Nam
+  ];
+
+  const occupiedCells = [];
+  for (const zone of neighborZones) {
+    for (let r = zone.r1; r <= zone.r2; r++) {
+      for (let c = zone.c1; c <= zone.c2; c++) {
+        occupiedCells.push({ col: c, row: r, owner: zone.owner });
+      }
+    }
+  }
+
+  return {
+    cols: MASTER_MAP_COLS,
+    rows: MASTER_MAP_ROWS,
+    anchorCol: 5,
+    anchorRow: 3,
+    userCells: [],
+    occupiedCells,
+  };
+}
+
+export function ensureMasterMap(state) {
+  if (!state.masterMap || !Array.isArray(state.masterMap.occupiedCells)) {
+    state.masterMap = createDefaultMasterMap();
+  }
+  const targetUnits = Math.floor((state.rentedAreaM2 || 0) / LAND_UNIT_M2);
+  if (state.masterMap.userCells.length === 0 && targetUnits > 0) {
+    const occSet = new Set(state.masterMap.occupiedCells.map((o) => `${o.col},${o.row}`));
+    const initialOrder = [
+      [5, 3],
+      [6, 3],
+      [5, 4],
+      [6, 4],
+    ];
+    for (let r = 3; r < MASTER_MAP_ROWS; r++) {
+      for (let c = 5; c < MASTER_MAP_COLS; c++) {
+        if (!initialOrder.some(([ic, ir]) => ic === c && ir === r)) {
+          initialOrder.push([c, r]);
+        }
+      }
+    }
+    for (const [c, r] of initialOrder) {
+      if (state.masterMap.userCells.length >= targetUnits) break;
+      if (!occSet.has(`${c},${r}`)) {
+        state.masterMap.userCells.push({ col: c, row: r });
+      }
+    }
+  }
+  return state.masterMap;
+}
+
+export function getUserMapBounds(state) {
+  const map = ensureMasterMap(state);
+  if (map.userCells.length === 0) {
+    return { minCol: 5, maxCol: 6, minRow: 3, maxRow: 4 };
+  }
+  let minCol = Infinity;
+  let maxCol = -Infinity;
+  let minRow = Infinity;
+  let maxRow = -Infinity;
+  for (const cell of map.userCells) {
+    if (cell.col < minCol) minCol = cell.col;
+    if (cell.col > maxCol) maxCol = cell.col;
+    if (cell.row < minRow) minRow = cell.row;
+    if (cell.row > maxRow) maxRow = cell.row;
+  }
+  return { minCol, maxCol, minRow, maxRow };
+}
+
+export function getExpansionCapabilities(state) {
+  const map = ensureMasterMap(state);
+  const userSet = new Set(map.userCells.map((u) => `${u.col},${u.row}`));
+  const occMap = new Map(map.occupiedCells.map((o) => [`${o.col},${o.row}`, o.owner]));
+  const { minCol, maxCol, minRow, maxRow } = getUserMapBounds(state);
+  const maxRemainingUserM2 = Math.max(0, MAX_USER_AREA_M2 - (state.rentedAreaM2 || 0));
+
+  const isFree = (c, r) =>
+    c >= 0 &&
+    c < map.cols &&
+    r >= 0 &&
+    r < map.rows &&
+    !userSet.has(`${c},${r}`) &&
+    !occMap.has(`${c},${r}`);
+
+  const buildDirectionInfo = (dir, label, shortLabel, icon) => {
+    const candidateCells = [];
+    let blockedBy = null;
+
+    if (dir === 'north') {
+      if (minRow <= 0) {
+        blockedBy = 'Ranh giới phía Bắc khu 2.000m²';
+      } else {
+        for (let c = minCol; c <= maxCol; c++) {
+          const owner = occMap.get(`${c},${minRow - 1}`);
+          if (owner) {
+            blockedBy = owner;
+            break;
+          }
+        }
+        if (!blockedBy) {
+          for (let r = minRow - 1; r >= 0; r--) {
+            let rowBlockedOwner = null;
+            for (let c = minCol; c <= maxCol; c++) {
+              if (occMap.has(`${c},${r}`)) {
+                rowBlockedOwner = occMap.get(`${c},${r}`);
+                break;
+              }
+            }
+            if (rowBlockedOwner) {
+              blockedBy = rowBlockedOwner;
+              break;
+            }
+            for (let c = minCol; c <= maxCol; c++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+        }
+      }
+    } else if (dir === 'west') {
+      if (minCol <= 0) {
+        blockedBy = 'Ranh giới phía Tây khu 2.000m²';
+      } else {
+        for (let r = minRow; r <= maxRow; r++) {
+          const owner = occMap.get(`${minCol - 1},${r}`);
+          if (owner) {
+            blockedBy = owner;
+            break;
+          }
+        }
+        if (!blockedBy) {
+          for (let c = minCol - 1; c >= 0; c--) {
+            let colBlockedOwner = null;
+            for (let r = minRow; r <= maxRow; r++) {
+              if (occMap.has(`${c},${r}`)) {
+                colBlockedOwner = occMap.get(`${c},${r}`);
+                break;
+              }
+            }
+            if (colBlockedOwner) {
+              blockedBy = colBlockedOwner;
+              break;
+            }
+            for (let r = minRow; r <= maxRow; r++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+        }
+      }
+    } else if (dir === 'east') {
+      if (maxCol >= map.cols - 1) {
+        blockedBy = 'Bờ sông Hồng (Ranh giới phía Đông)';
+      } else {
+        for (let r = minRow; r <= maxRow; r++) {
+          const owner = occMap.get(`${maxCol + 1},${r}`);
+          if (owner) {
+            blockedBy = owner;
+            break;
+          }
+        }
+        if (!blockedBy) {
+          // Mở rộng theo dải hàng hiện tại sang phía Đông trước, sau đó mở rộng các hàng lân cận về phía Đông
+          for (let c = maxCol + 1; c < map.cols; c++) {
+            for (let r = minRow; r <= maxRow; r++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+          for (let r = maxRow + 1; r < map.rows; r++) {
+            for (let c = minCol; c < map.cols; c++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+          for (let r = minRow - 1; r >= 0; r--) {
+            for (let c = maxCol + 1; c < map.cols; c++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+        }
+      }
+    } else if (dir === 'south') {
+      if (maxRow >= map.rows - 1) {
+        blockedBy = 'Đường nội khu (Ranh giới phía Nam)';
+      } else {
+        for (let c = minCol; c <= maxCol; c++) {
+          const owner = occMap.get(`${c},${maxRow + 1}`);
+          if (owner) {
+            blockedBy = owner;
+            break;
+          }
+        }
+        if (!blockedBy) {
+          // Mở rộng theo dải cột hiện tại xuống phía Nam trước, sau đó mở rộng sang các cột liền kề phía Nam
+          for (let r = maxRow + 1; r < map.rows; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+          for (let c = maxCol + 1; c < map.cols; c++) {
+            for (let r = minRow; r < map.rows; r++) {
+              if (isFree(c, r)) candidateCells.push({ col: c, row: r });
+            }
+          }
+        }
+      }
+    }
+
+    const rawMaxM2 = candidateCells.length * LAND_UNIT_M2;
+    const maxExpandM2 = Math.min(rawMaxM2, maxRemainingUserM2);
+    const canExpand = maxExpandM2 >= LAND_UNIT_M2;
+
+    let statusText;
+    if (!canExpand) {
+      statusText = blockedBy
+        ? `⛔ Kịch biên (${blockedBy} đã xây sát cạnh)`
+        : '⛔ Đã đạt tối đa 500m²';
+    } else if (blockedBy && rawMaxM2 <= 80) {
+      statusText = `⚠️ Còn trống +${maxExpandM2}m² (Giáp ${blockedBy})`;
+    } else {
+      statusText = `✅ Mở rộng tốt (Tối đa +${maxExpandM2}m²)`;
+    }
+
+    return {
+      id: dir,
+      label,
+      shortLabel,
+      icon,
+      canExpand,
+      maxExpandM2,
+      blockedBy,
+      statusText,
+      candidateCells,
+    };
+  };
+
+  const directions = {
+    north: buildDirectionInfo('north', 'Hướng Bắc', '⬆️ Bắc', '⬆️'),
+    east: buildDirectionInfo('east', 'Hướng Đông (Sông Hồng)', '➡️ Đông', '➡️'),
+    south: buildDirectionInfo('south', 'Hướng Nam (Đường lớn)', '⬇️ Nam', '⬇️'),
+    west: buildDirectionInfo('west', 'Hướng Tây', '⬅️ Tây', '⬅️'),
+  };
+
+  const canExpandAny = Object.values(directions).some((d) => d.canExpand);
+  return {
+    cols: map.cols,
+    rows: map.rows,
+    canExpandAny,
+    directions,
+    ...directions,
+  };
+}
+
+export function getPreviewExpansionCells(state, direction, additionalAreaM2) {
+  const caps = getExpansionCapabilities(state);
+  const dirInfo = caps.directions[direction];
+  if (!dirInfo || !dirInfo.canExpand) return [];
+  const count = Math.max(0, Math.floor((additionalAreaM2 || 0) / LAND_UNIT_M2));
+  return dirInfo.candidateCells.slice(0, count);
+}
+
 export function createInitialFarmState(options = {}) {
   const familyName = options.familyName || 'Gia đình Bé Bắp - Chung cư Hà Nội';
   const apartmentAddress =
@@ -593,6 +865,8 @@ export function createInitialFarmState(options = {}) {
     totalProduceRevenue: 0,
     managedOtherAreaM2: 0,
     totalManagementRevenue: 0,
+    lastExpansionDirection: 'east',
+    masterMap: createDefaultMasterMap(),
     plots: [],
     dailyUpdates: [
       {
@@ -628,7 +902,7 @@ export function topUpWallet(state, amountVnd) {
   };
 }
 
-export function rentLandArea(state, additionalAreaM2) {
+export function rentLandArea(state, additionalAreaM2, direction = null) {
   if (
     typeof additionalAreaM2 !== 'number' ||
     additionalAreaM2 <= 0 ||
@@ -666,6 +940,79 @@ export function rentLandArea(state, additionalAreaM2) {
     };
   }
 
+  const map = ensureMasterMap(state);
+  let cellsToClaim = [];
+  let chosenDirection = direction || 'east';
+
+  if (state.rentedAreaM2 === 0 || map.userCells.length === 0) {
+    // Khởi tạo lô đất đầu tiên tại khu trung tâm (Cột 5..6, Hàng 3..4) trên Map tổng 2.000m²
+    const occSet = new Set(map.occupiedCells.map((o) => `${o.col},${o.row}`));
+    const initialSeeds = [
+      [5, 3],
+      [6, 3],
+      [5, 4],
+      [6, 4],
+    ];
+    for (let r = 3; r < map.rows; r++) {
+      for (let c = 5; c < map.cols; c++) {
+        if (!initialSeeds.some(([ic, ir]) => ic === c && ir === r)) {
+          initialSeeds.push([c, r]);
+        }
+      }
+    }
+    for (const [c, r] of initialSeeds) {
+      if (cellsToClaim.length >= numUnits) break;
+      if (!occSet.has(`${c},${r}`)) {
+        cellsToClaim.push({ col: c, row: r });
+      }
+    }
+  } else {
+    const caps = getExpansionCapabilities(state);
+    if (!caps.canExpandAny) {
+      return {
+        ok: false,
+        error:
+          'Tất cả các hướng quanh khu đất của bạn đều đã có hộ khác xây dựng sát cạnh, không thể mở rộng thêm!',
+      };
+    }
+
+    if (direction) {
+      const dirInfo = caps.directions[direction];
+      if (!dirInfo) {
+        return { ok: false, error: 'Hướng mở rộng không hợp lệ.' };
+      }
+      if (!dirInfo.canExpand) {
+        return {
+          ok: false,
+          error: `Không thể mở rộng về ${dirInfo.label}: Sát cạnh đã có "${dirInfo.blockedBy}" xây dựng! Hãy chọn hướng khác trên Bản Đồ 2.000m².`,
+        };
+      }
+      if (additionalAreaM2 > dirInfo.maxExpandM2) {
+        return {
+          ok: false,
+          error: `${dirInfo.label} chỉ còn mở rộng được tối đa +${dirInfo.maxExpandM2}m² trước khi chạm đất "${dirInfo.blockedBy || 'ranh giới'}". Hãy chọn hướng Đông/Nam hoặc giảm diện tích!`,
+        };
+      }
+      cellsToClaim = dirInfo.candidateCells.slice(0, numUnits);
+      chosenDirection = direction;
+    } else {
+      // Tự động chọn hướng còn đủ diện tích (Đông -> Nam -> Tây -> Bắc)
+      const fallbackOrder = ['east', 'south', 'west', 'north'];
+      const picked = fallbackOrder
+        .map((d) => caps.directions[d])
+        .find((d) => d && d.canExpand && d.maxExpandM2 >= additionalAreaM2);
+      if (!picked) {
+        return {
+          ok: false,
+          error:
+            'Không còn hướng nào đủ diện tích trống liền kề để mở rộng mức này do vướng các hộ xung quanh!',
+        };
+      }
+      cellsToClaim = picked.candidateCells.slice(0, numUnits);
+      chosenDirection = picked.id;
+    }
+  }
+
   const previousBalance = state.walletBalance;
   state.walletBalance -= totalCost;
   const startIdx = state.plots.length;
@@ -684,12 +1031,18 @@ export function rentLandArea(state, additionalAreaM2) {
     });
   }
 
+  for (const cell of cellsToClaim) {
+    map.userCells.push({ col: cell.col, row: cell.row });
+  }
+  state.lastExpansionDirection = chosenDirection;
   state.rentedAreaM2 += additionalAreaM2;
   const leveledUp = addExp(state, numUnits * 15);
 
   return {
     ok: true,
     addedPlots: numUnits,
+    direction: chosenDirection,
+    claimedMapCells: cellsToClaim,
     cost: totalCost,
     balanceDelta: -totalCost,
     previousBalance,

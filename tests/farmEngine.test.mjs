@@ -12,6 +12,8 @@ import {
   assignManagedGarden,
   getGrowthStageInfo,
   hasFishPond,
+  getExpansionCapabilities,
+  getPreviewExpansionCells,
   ITEM_CATALOG,
   SHOP_CATEGORIES,
   computeRoamingCells,
@@ -376,4 +378,44 @@ test('watering the same plot twice in one day only grants EXP once', () => {
   const expBeforeNextDay = state.exp;
   assert.equal(waterPlot(state, 0).expEarned, 15);
   assert.equal(state.exp, expBeforeNextDay + 15);
+});
+
+test('2000m2 master map tracks user location, blocks expansion into adjacent neighbor lots, and scales in chosen direction', () => {
+  const state = createInitialFarmState({ initialBalance: 8_000_000 });
+  // Initial 40m2 (4 lots of 10m2 at col 5..6, row 3..4)
+  rentLandArea(state, 40);
+  assert.equal(state.masterMap.cols * state.masterMap.rows, 200); // 20x10 = 200 lots x 10m2 = 2000m2
+  assert.equal(state.masterMap.userCells.length, 4);
+
+  const caps = getExpansionCapabilities(state);
+  // North is immediately blocked by GĐ Tuấn Kiệt (Times City) at row 1..2, col 5..7
+  assert.equal(caps.north.canExpand, false);
+  assert.equal(caps.north.maxExpandM2, 0);
+  assert.match(caps.north.blockedBy, /Tuấn Kiệt/);
+
+  // Attempting to rent land towards North fails because neighbor already built there
+  const blockedNorthRes = rentLandArea(state, 20, 'north');
+  assert.equal(blockedNorthRes.ok, false);
+  assert.equal(state.rentedAreaM2, 40);
+
+  // West only has 40m2 free before hitting GĐ Minh Anh (Royal City) at col 1..2
+  assert.equal(caps.west.canExpand, true);
+  assert.equal(caps.west.maxExpandM2, 40);
+  const westRes = rentLandArea(state, 40, 'west');
+  assert.equal(westRes.ok, true);
+  assert.equal(westRes.direction, 'west');
+  assert.equal(state.rentedAreaM2, 80);
+
+  // Now West is also completely blocked by GĐ Minh Anh
+  const capsAfterWest = getExpansionCapabilities(state);
+  assert.equal(capsAfterWest.west.canExpand, false);
+  assert.equal(capsAfterWest.west.maxExpandM2, 0);
+
+  // East and South remain open for scaling
+  assert.equal(capsAfterWest.east.canExpand, true);
+  const previewEast = getPreviewExpansionCells(state, 'east', 30);
+  assert.equal(previewEast.length, 3);
+  const eastRes = rentLandArea(state, 30, 'east');
+  assert.equal(eastRes.ok, true);
+  assert.equal(state.rentedAreaM2, 110);
 });

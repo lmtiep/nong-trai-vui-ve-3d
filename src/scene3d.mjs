@@ -78,17 +78,23 @@ export function getHanoiTimeInfo(overrideMode = 'auto') {
 
 /**
  * Tính số cột x hàng cho mảnh đất hình chữ nhật/vuông theo tổng số m² (mỗi ô 1x1 = 1m²)
+ * Hỗ trợ xoay tỉ lệ Dài x Rộng theo hướng người chơi mở rộng trên Map tổng 2.000m² (Đông/Tây vs Nam/Bắc)
  */
-export function computeGridDimensions(totalM2) {
+export function computeGridDimensions(totalM2, state = null) {
   const area = Math.max(10, totalM2 || 10);
-  let cols = Math.round(Math.sqrt(area));
-  while (area % cols !== 0 && cols > 1) {
-    cols -= 1;
+  let f1 = Math.round(Math.sqrt(area));
+  while (area % f1 !== 0 && f1 > 1) {
+    f1 -= 1;
   }
-  const rows = area / cols;
+  const f2 = area / f1;
+  const longer = Math.max(f1, f2);
+  const shorter = Math.min(f1, f2);
+  const isNorthSouth =
+    state && (state.lastExpansionDirection === 'south' || state.lastExpansionDirection === 'north');
+
   return {
-    cols: Math.max(cols, rows),
-    rows: Math.min(cols, rows),
+    cols: isNorthSouth ? shorter : longer,
+    rows: isNorthSouth ? longer : shorter,
     cellSize: 1.0, // Tỉ lệ thực 1:1 chuẩn: 1 đơn vị 3D = 1.0 mét ngoài đời (ô 1x1 = 1m²)
   };
 }
@@ -128,7 +134,8 @@ export class CuteIslandScene {
     this.scene.fog = new THREE.FogExp2('#cbe7ff', 0.008);
 
     this.camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 350);
-    this.camera.position.set(10.5, 9.5, 12.5);
+    const mobileScale = width < height ? 1.45 : 1.0;
+    this.camera.position.set(10.5 * mobileScale, 9.8 * mobileScale, 13.0 * mobileScale);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setSize(width, height);
@@ -144,8 +151,8 @@ export class CuteIslandScene {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
     this.controls.maxPolarAngle = Math.PI / 2.12;
-    this.controls.minDistance = 5;
-    this.controls.maxDistance = 60;
+    this.controls.minDistance = 4.5;
+    this.controls.maxDistance = 85;
 
     this.islandGroup = new THREE.Group();
     this.scene.add(this.islandGroup);
@@ -402,7 +409,7 @@ export class CuteIslandScene {
 
     this.renderer.domElement.addEventListener('pointerup', (e) => {
       const dist = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
-      if (dist > 6 || !this.soilMesh) return;
+      if (dist > 14 || !this.soilMesh) return;
 
       const rect = this.renderer.domElement.getBoundingClientRect();
       this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -450,7 +457,7 @@ export class CuteIslandScene {
     this.roamingAnimals = [];
 
     const totalM2 = Math.max(10, state.rentedAreaM2 || 40);
-    const { cols, rows, cellSize } = computeGridDimensions(totalM2);
+    const { cols, rows, cellSize } = computeGridDimensions(totalM2, state);
     this.gridInfo = { cols, rows, cellSize };
 
     const soilWidth = cols * cellSize;
