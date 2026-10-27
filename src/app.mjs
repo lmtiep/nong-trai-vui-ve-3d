@@ -25,13 +25,13 @@ import {
   SHOP_CATEGORIES,
   PRICE_PER_10M2,
   MAX_USER_AREA_M2,
-} from './farmEngine.mjs?v=20261026_06';
+} from './farmEngine.mjs?v=20261027_01';
 import {
   CuteIslandScene,
   ShopPreview3D,
   MasterMap3D,
   computeGridDimensions,
-} from './scene3d.mjs?v=20261026_06';
+} from './scene3d.mjs?v=20261027_01';
 
 const STORAGE_KEY = 'nong_trai_vui_ve_state_v4';
 

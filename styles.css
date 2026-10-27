@@ -1706,18 +1706,22 @@ html {
 }
 
 .dir-card-badge {
+  display: inline-flex;
+  align-items: center;
   font-size: 0.7rem;
   font-weight: 800;
   padding: 2px 7px;
   border-radius: 99px;
 }
 
-.badge-open {
+.dir-card-badge.badge-open {
+  display: inline-flex;
   background: #dcfce7;
   color: #15803d;
 }
 
-.badge-blocked {
+.dir-card-badge.badge-blocked {
+  display: inline-flex;
   background: #ffe4e6;
   color: #be123c;
 }
@@ -1873,48 +1877,61 @@ html {
   }
 
   /* Shop 3D Layout on Mobile: Turntable on top, item grid below */
-  .shop-3d-layout {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    max-height: none;
+  .shop-category-tabs {
+    gap: 6px;
+    margin-bottom: 10px;
+    padding: 4px;
   }
 
-  .shop-3d-showcase {
+  .shop-tab-btn {
+    padding: 8px 8px;
+    font-size: 0.78rem;
+  }
+
+  .shop-game-split {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .shop-3d-showcase-card {
     padding: 10px;
+    border-radius: 18px;
   }
 
   .shop-3d-viewport {
-    height: 170px;
+    height: 175px;
   }
 
-  .shop-visual-grid {
+  .shop-catalog-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    max-height: 230px;
+    max-height: 240px;
+    overflow-y: auto;
     gap: 8px;
     padding: 4px;
   }
 
-  .shop-visual-card {
-    min-height: 112px;
-    padding: 8px 6px;
+  .shop-card {
+    min-height: 98px;
+    padding: 10px 6px;
+    border-radius: 14px;
   }
 
-  .shop-card-emoji {
-    font-size: 2.1rem;
+  .shop-icon {
+    font-size: 1.95rem;
   }
 
-  .shop-card-title {
-    font-size: 0.76rem;
+  .shop-title {
+    font-size: 0.75rem;
   }
 
   /* 2,000m² (25m x 80m) 3D Master Map on Mobile */
   .master-map-split-layout {
     grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 10px;
   }
 
   .master-map-3d-viewport {
-    height: 300px;
+    height: 260px;
   }
 
   .cam-preset-btn {
@@ -1922,13 +1939,29 @@ html {
     padding: 4px 8px;
   }
 
-  .blueprint-specs-grid {
-    grid-template-columns: 1fr;
+  .expansion-direction-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
   }
 
-  .expansion-direction-grid {
-    grid-template-columns: 1fr;
-    gap: 6px;
+  .dir-card {
+    padding: 7px 8px;
+  }
+
+  .dir-card-title {
+    font-size: 0.76rem;
+  }
+
+  .help-popover,
+  .help-popover-up {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    top: auto;
+    bottom: calc(90px + env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+    z-index: 250;
   }
 
   .mastery-stats-grid {
@@ -1952,7 +1985,7 @@ html {
 
 @media (max-width: 480px) {
   .hud-pill {
-    font-size: 0.73rem;
+    font-size: 0.72rem;
     padding: 4px 8px;
   }
 
@@ -1960,11 +1993,20 @@ html {
     display: none;
   }
 
-  .shop-visual-grid {
+  .hud-map-cta-pill {
+    font-size: 0.68rem;
+    padding: 2px 7px;
+  }
+
+  .shop-catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .shop-3d-viewport {
     height: 155px;
+  }
+
+  .master-map-3d-viewport {
+    height: 235px;
   }
 }

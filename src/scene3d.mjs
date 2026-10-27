@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261026_06';
+import { computeRoamingCells, computeStageNumber } from './farmEngine.mjs?v=20261027_01';
 
 /**
  * Helper tạo vật liệu Đất Sét Mềm (Soft Matte Claymorphism Shader)
@@ -2642,8 +2642,8 @@ export class MasterMap3D {
 
   init() {
     if (!this.container) return;
-    const width = Math.max(320, this.container.clientWidth || 540);
-    const height = Math.max(360, this.container.clientHeight || 480);
+    const width = Math.max(240, this.container.clientWidth || 540);
+    const height = Math.max(200, this.container.clientHeight || 420);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xdbf0ff);
@@ -3449,8 +3449,8 @@ export class MasterMap3D {
 
   resize() {
     if (!this.container || !this.renderer || !this.camera) return;
-    const width = Math.max(300, this.container.clientWidth);
-    const height = Math.max(320, this.container.clientHeight);
+    const width = Math.max(240, this.container.clientWidth);
+    const height = Math.max(200, this.container.clientHeight);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
